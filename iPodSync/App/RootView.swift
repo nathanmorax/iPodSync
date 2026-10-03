@@ -1,5 +1,5 @@
 //
-//  ContentView.swift
+//  RootView.swift
 //  iPodSync
 //
 //  Created by Satori Tech 341 on 01/10/26.
@@ -11,7 +11,7 @@ import UniformTypeIdentifiers
 
 /// Raíz de la ventana: estilo emulador (iPod + panel "En tu Mac").
 /// Enviar, cancelar, luz y expulsar siguen en la barra de menús con sus atajos.
-struct ContentView: View {
+struct RootView: View {
     let simulator: IPodSimulator
     @Bindable var library: LibraryState
     @Bindable var monitor: IPodMonitor
@@ -54,8 +54,8 @@ struct ContentView: View {
     }
 }
 
-#Preview("ContentView · ventana completa") {
-    ContentView(simulator: IPodSimulator(), library: LibraryState(), monitor: IPodMonitor())
+#Preview("RootView · ventana completa") {
+    RootView(simulator: IPodSimulator(), library: LibraryState(), monitor: IPodMonitor())
         .frame(width: 800, height: 760)
         .background(Wallpaper())
 }

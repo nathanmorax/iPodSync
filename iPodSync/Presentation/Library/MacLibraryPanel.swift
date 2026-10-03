@@ -2,8 +2,7 @@
 //  MacLibraryPanel.swift
 //  iPodSync
 //
-//  Panel flotante "En tu Mac": la biblioteca de la Mac con búsqueda, filtros por estado,
-//  índice A–Z, y abajo cuánto espacio quedará en el iPod antes de enviar.
+//  Panel flotante "En tu Mac": búsqueda, filtros, lista y espacio antes de enviar.
 //
 
 import SwiftUI
@@ -321,144 +320,6 @@ struct MacLibraryPanel: View {
 
 // MARK: - Lista de canciones por letra con índice A–Z
 
-struct IndexedSongsList: View {
-    let songs: [Song]
-    let simulator: IPodSimulator
-    let library: LibraryState
-
-    private var sorted: [Song] {
-        songs.sorted { $0.title.localizedCompare($1.title) == .orderedAscending }
-    }
-
-    private var sections: [(letter: String, songs: [Song])] {
-        var result: [(letter: String, songs: [Song])] = []
-        for song in sorted {
-            let letter = Self.letter(for: song.title)
-            if result.last?.letter == letter {
-                result[result.count - 1].songs.append(song)
-            } else {
-                result.append((letter: letter, songs: [song]))
-            }
-        }
-        return result
-    }
-
-    static func letter(for title: String) -> String {
-        guard let first = title.first else { return "#" }
-        let folded = String(first)
-            .folding(options: [.diacriticInsensitive, .caseInsensitive], locale: Locale(identifier: "es"))
-            .uppercased()
-        guard let char = folded.first, char.isLetter, char.isASCII else { return "#" }
-        return String(char)
-    }
-
-    var body: some View {
-        let groups = sections
-        let order = sorted.map(\.id)
-
-        ScrollViewReader { proxy in
-            HStack(alignment: .top, spacing: 4) {
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
-                        ForEach(groups, id: \.letter) { group in
-                            Section {
-                                ForEach(group.songs) { song in
-                                    SongRow(song: song,
-                                            subtitle: "\(song.artist) · \(song.sizeText)",
-                                            simulator: simulator,
-                                            library: library,
-                                            order: order)
-                                    Divider().padding(.leading, 52)
-                                }
-                            } header: {
-                                Text(group.letter)
-                                    .font(.system(size: 11, weight: .bold))
-                                    .foregroundStyle(.tint)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .padding(.horizontal, 12)
-                                    .padding(.vertical, 4)
-                                    .background(.thinMaterial)
-                                    .id(group.letter)
-                                    .accessibilityAddTraits(.isHeader)
-                            }
-                        }
-                    }
-                }
-
-                AlphabetIndex(available: Set(groups.map(\.letter))) { letter in
-                    withAnimation(.easeOut(duration: 0.2)) {
-                        proxy.scrollTo(letter, anchor: .top)
-                    }
-                }
-            }
-        }
-    }
-}
-
-/// Índice vertical A–Z; las letras sin canciones se ven apagadas.
-struct AlphabetIndex: View {
-    let available: Set<String>
-    let onSelect: (String) -> Void
-
-    static let letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ#".map(String.init)
-
-    var body: some View {
-        VStack(spacing: 0) {
-            ForEach(Self.letters, id: \.self) { letter in
-                let enabled = available.contains(letter)
-                Button {
-                    onSelect(letter)
-                } label: {
-                    Text(letter)
-                        .font(.system(size: 8.5, weight: .semibold))
-                        .foregroundStyle(enabled ? AnyShapeStyle(TintShapeStyle.tint) : AnyShapeStyle(HierarchicalShapeStyle.tertiary))
-                        .frame(width: 14)
-                        .frame(maxHeight: .infinity)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .disabled(!enabled)
-                .accessibilityLabel("Ir a la letra \(letter)")
-            }
-        }
-        .frame(width: 14)
-        .frame(maxHeight: .infinity)
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("Índice alfabético")
-    }
-}
-
-// MARK: - Barra de espacio
-
-struct CapacityBar: View {
-    let other: Double
-    let music: Double
-    let pending: Double
-
-    var body: some View {
-        GeometryReader { geo in
-            HStack(spacing: 0) {
-                Rectangle().fill(Color.gray.opacity(0.7))
-                    .frame(width: geo.size.width * other)
-                Rectangle().fill(Color.green)
-                    .frame(width: max(3, geo.size.width * music))
-                if pending > 0 {
-                    Rectangle().fill(Color.accentColor)
-                        .frame(width: max(3, geo.size.width * pending))
-                }
-                Spacer(minLength: 0)
-            }
-            .background(Color.primary.opacity(0.1))
-            .clipShape(Capsule())
-        }
-        .frame(height: 6)
-        .animation(.easeOut(duration: 0.3), value: music)
-        .animation(.easeOut(duration: 0.3), value: pending)
-        .accessibilityElement()
-        .accessibilityLabel("Espacio usado en el iPod")
-    }
-}
-
 #Preview("MacLibraryPanel · En tu Mac") {
     MacLibraryPanel(library: LibraryState(), simulator: IPodSimulator(), monitor: IPodMonitor())
         .frame(width: 384, height: 640)
@@ -473,27 +334,4 @@ struct CapacityBar: View {
         .frame(width: 384, height: 640)
         .padding(30)
         .background(Wallpaper())
-}
-
-#Preview("IndexedSongsList · canciones por letra + A–Z") {
-    let sim = IPodSimulator()
-    return IndexedSongsList(songs: sim.songs, simulator: sim, library: LibraryState())
-        .frame(width: 350, height: 420)
-        .padding()
-        .background(.regularMaterial)
-        .environment(\.colorScheme, .dark)
-}
-
-#Preview("AlphabetIndex · índice A–Z") {
-    AlphabetIndex(available: ["A", "C", "D", "E", "M", "N", "P"]) { _ in }
-        .frame(height: 380)
-        .padding()
-        .environment(\.colorScheme, .dark)
-        .background(Color.black)
-}
-
-#Preview("CapacityBar · barra de espacio") {
-    CapacityBar(other: 0.58, music: 0.02, pending: 0.03)
-        .frame(width: 320)
-        .padding()
 }

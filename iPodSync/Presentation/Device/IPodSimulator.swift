@@ -2,46 +2,12 @@
 //  IPodSimulator.swift
 //  iPodSync
 //
-//  Estado del iPod simulado: conexión, navegación del LCD y cola de transferencias (mock).
+//  Estado del iPod en pantalla: conexión, navegación del LCD y cola de envío (simulada).
+//  Paso 3 de la reestructura: se divide en DeviceViewModel, EmulatorViewModel y TransferRepository.
 //
 
 import SwiftUI
 import Observation
-
-enum LCDScreenID: Equatable {
-    case main, recents, songs, artists, storage, settings
-
-    var title: String {
-        switch self {
-        case .main:     "TONO"
-        case .recents:  "RECIENTES"
-        case .songs:    "CANCIONES"
-        case .artists:  "ARTISTAS"
-        case .storage:  "ESPACIO"
-        case .settings: "AJUSTES"
-        }
-    }
-}
-
-enum LCDRowAction: Equatable {
-    case open(LCDScreenID)
-    case toggleBacklight
-}
-
-struct LCDRow: Identifiable, Equatable {
-    let id: String
-    let title: String
-    var value: String? = nil
-    var action: LCDRowAction? = nil
-}
-
-struct TransferState: Equatable {
-    var song: Song
-    var position: Int
-    var total: Int
-    var progress: Double
-    var finished = false
-}
 
 @MainActor
 @Observable

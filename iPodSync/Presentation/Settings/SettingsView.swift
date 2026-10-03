@@ -6,12 +6,14 @@
 //
 
 import SwiftUI
+import ServiceManagement
 
 struct SettingsView: View {
     @AppStorage(SettingsKey.rowDensity) private var density = "regular"
     @AppStorage(SettingsKey.lcdTint) private var lcdTint = "green"
     @AppStorage(SettingsKey.showKeyHints) private var showKeyHints = true
     @AppStorage(SettingsKey.simulateIPod) private var simulateIPod = false
+    @State private var openOnConnect = OpenOnConnect()
 
     var body: some View {
         Form {
@@ -39,6 +41,23 @@ struct SettingsView: View {
             } header: {
                 Text("iPod")
             }
+
+            Section {
+                Toggle("Abrir iPodSync al conectar el iPod", isOn: Binding(
+                    get: { openOnConnect.isEnabled },
+                    set: { openOnConnect.setEnabled($0) }
+                ))
+                Text(openOnConnect.errorMessage ?? openOnConnect.statusText)
+                    .font(.caption)
+                    .foregroundStyle(openOnConnect.errorMessage == nil ? Color.secondary : Color.red)
+                    .fixedSize(horizontal: false, vertical: true)
+                if openOnConnect.status == .requiresApproval {
+                    Button("Abrir Ítems de inicio…") { openOnConnect.openSystemSettings() }
+                }
+            } header: {
+                Text("Al conectar")
+            }
+            .onAppear { openOnConnect.refresh() }
 
             Section {
                 Toggle("Simular un iPod (para pruebas)", isOn: $simulateIPod)

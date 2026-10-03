@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Agente que abre iPodSync al conectar el iPod. Lo registra la app con SMAppService.agent. -->
+	<key>Label</key>
+	<string>com.mora.iPodSync.launcher</string>
+
+	<!-- Ruta del ayudante dentro de iPodSync.app -->
+	<key>BundleProgram</key>
+	<string>Contents/MacOS/iPodSyncLauncher</string>
+
+	<key>AssociatedBundleIdentifiers</key>
+	<array>
+		<string>com.mora.iPodSync</string>
+	</array>
+
+	<!-- No corre todo el tiempo: macOS lo despierta solo cuando aparece uno de estos USB. -->
+	<key>LaunchEvents</key>
+	<dict>
+		<key>com.apple.iokit.matching</key>
+		<dict>
+			<!-- iPod (quinta generación, "video"): Apple 0x05AC, producto 0x1209 -->
+			<key>com.mora.iPodSync.ipod-5g</key>
+			<dict>
+				<key>IOProviderClass</key>
+				<string>IOUSBHostDevice</string>
+				<key>idVendor</key>
+				<integer>1452</integer>
+				<key>idProduct</key>
+				<integer>4617</integer>
+				<key>IOMatchLaunchStream</key>
+				<true/>
+			</dict>
+			<!-- iPod classic: Apple 0x05AC, producto 0x1261 -->
+			<key>com.mora.iPodSync.ipod-classic</key>
+			<dict>
+				<key>IOProviderClass</key>
+				<string>IOUSBHostDevice</string>
+				<key>idVendor</key>
+				<integer>1452</integer>
+				<key>idProduct</key>
+				<integer>4705</integer>
+				<key>IOMatchLaunchStream</key>
+				<true/>
+			</dict>
+		</dict>
+	</dict>
+</dict>
+</plist>

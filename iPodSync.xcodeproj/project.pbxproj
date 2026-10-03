@@ -6,7 +6,19 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		94AD15533071ADE100580D29 /* iPodSyncLauncher in CopyFiles */ = {isa = PBXBuildFile; fileRef = 94AD154B3071ACE300580D29 /* iPodSyncLauncher */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
+		94AD16023071B00000C0FFEE /* com.mora.iPodSync.launcher.plist in Embed LaunchAgent */ = {isa = PBXBuildFile; fileRef = 94AD16013071B00000C0FFEE /* com.mora.iPodSync.launcher.plist */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
+		94AD16043071B00000C0FFEE /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 94B08841306EBBF5006866DB /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 94AD154A3071ACE300580D29;
+			remoteInfo = iPodSyncLauncher;
+		};
 		94B08857306EBBF7006866DB /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 94B08841306EBBF5006866DB /* Project object */;
@@ -23,13 +35,53 @@
 		};
 /* End PBXContainerItemProxy section */
 
+/* Begin PBXCopyFilesBuildPhase section */
+		94AD15493071ACE300580D29 /* CopyFiles */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = /usr/share/man/man1/;
+			dstSubfolderSpec = 0;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 1;
+		};
+		94AD15523071ADB800580D29 /* CopyFiles */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 6;
+			files = (
+				94AD15533071ADE100580D29 /* iPodSyncLauncher in CopyFiles */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		94AD16033071B00000C0FFEE /* Embed LaunchAgent */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = Contents/Library/LaunchAgents;
+			dstSubfolderSpec = 1;
+			files = (
+				94AD16023071B00000C0FFEE /* com.mora.iPodSync.launcher.plist in Embed LaunchAgent */,
+			);
+			name = "Embed LaunchAgent";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
+		94AD154B3071ACE300580D29 /* iPodSyncLauncher */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = iPodSyncLauncher; sourceTree = BUILT_PRODUCTS_DIR; };
+		94AD16013071B00000C0FFEE /* com.mora.iPodSync.launcher.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; name = com.mora.iPodSync.launcher.plist; path = LaunchAgent/com.mora.iPodSync.launcher.plist; sourceTree = "<group>"; };
 		94B08849306EBBF5006866DB /* iPodSync.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = iPodSync.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		94B08856306EBBF7006866DB /* iPodSyncTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = iPodSyncTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		94B08860306EBBF7006866DB /* iPodSyncUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = iPodSyncUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
+		94AD154C3071ACE300580D29 /* iPodSyncLauncher */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = iPodSyncLauncher;
+			sourceTree = "<group>";
+		};
 		94B0884B306EBBF5006866DB /* iPodSync */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = iPodSync;
@@ -48,6 +100,13 @@
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		94AD15483071ACE300580D29 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		94B08846306EBBF5006866DB /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -75,9 +134,11 @@
 		94B08840306EBBF5006866DB = {
 			isa = PBXGroup;
 			children = (
+				94AD16013071B00000C0FFEE /* com.mora.iPodSync.launcher.plist */,
 				94B0884B306EBBF5006866DB /* iPodSync */,
 				94B08859306EBBF7006866DB /* iPodSyncTests */,
 				94B08863306EBBF7006866DB /* iPodSyncUITests */,
+				94AD154C3071ACE300580D29 /* iPodSyncLauncher */,
 				94B0884A306EBBF5006866DB /* Products */,
 			);
 			sourceTree = "<group>";
@@ -88,6 +149,7 @@
 				94B08849306EBBF5006866DB /* iPodSync.app */,
 				94B08856306EBBF7006866DB /* iPodSyncTests.xctest */,
 				94B08860306EBBF7006866DB /* iPodSyncUITests.xctest */,
+				94AD154B3071ACE300580D29 /* iPodSyncLauncher */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -95,6 +157,28 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		94AD154A3071ACE300580D29 /* iPodSyncLauncher */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 94AD154F3071ACE300580D29 /* Build configuration list for PBXNativeTarget "iPodSyncLauncher" */;
+			buildPhases = (
+				94AD15473071ACE300580D29 /* Sources */,
+				94AD15483071ACE300580D29 /* Frameworks */,
+				94AD15493071ACE300580D29 /* CopyFiles */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				94AD154C3071ACE300580D29 /* iPodSyncLauncher */,
+			);
+			name = iPodSyncLauncher;
+			packageProductDependencies = (
+			);
+			productName = iPodSyncLauncher;
+			productReference = 94AD154B3071ACE300580D29 /* iPodSyncLauncher */;
+			productType = "com.apple.product-type.tool";
+		};
 		94B08848306EBBF5006866DB /* iPodSync */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 94B0886A306EBBF7006866DB /* Build configuration list for PBXNativeTarget "iPodSync" */;
@@ -102,10 +186,13 @@
 				94B08845306EBBF5006866DB /* Sources */,
 				94B08846306EBBF5006866DB /* Frameworks */,
 				94B08847306EBBF5006866DB /* Resources */,
+				94AD15523071ADB800580D29 /* CopyFiles */,
+				94AD16033071B00000C0FFEE /* Embed LaunchAgent */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				94AD16053071B00000C0FFEE /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				94B0884B306EBBF5006866DB /* iPodSync */,
@@ -173,6 +260,9 @@
 				LastSwiftUpdateCheck = 2630;
 				LastUpgradeCheck = 2630;
 				TargetAttributes = {
+					94AD154A3071ACE300580D29 = {
+						CreatedOnToolsVersion = 26.3;
+					};
 					94B08848306EBBF5006866DB = {
 						CreatedOnToolsVersion = 26.3;
 					};
@@ -203,6 +293,7 @@
 				94B08848306EBBF5006866DB /* iPodSync */,
 				94B08855306EBBF7006866DB /* iPodSyncTests */,
 				94B0885F306EBBF7006866DB /* iPodSyncUITests */,
+				94AD154A3071ACE300580D29 /* iPodSyncLauncher */,
 			);
 		};
 /* End PBXProject section */
@@ -232,6 +323,13 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		94AD15473071ACE300580D29 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		94B08845306EBBF5006866DB /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -256,6 +354,11 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
+		94AD16053071B00000C0FFEE /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 94AD154A3071ACE300580D29 /* iPodSyncLauncher */;
+			targetProxy = 94AD16043071B00000C0FFEE /* PBXContainerItemProxy */;
+		};
 		94B08858306EBBF7006866DB /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = 94B08848306EBBF5006866DB /* iPodSync */;
@@ -269,6 +372,42 @@
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
+		94AD15503071ACE300580D29 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CREATE_INFOPLIST_SECTION_IN_BINARY = YES;
+				DEVELOPMENT_TEAM = 9CWTM4F934;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = com.mora.iPodSync.launcher;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		94AD15513071ACE300580D29 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CREATE_INFOPLIST_SECTION_IN_BINARY = YES;
+				DEVELOPMENT_TEAM = 9CWTM4F934;
+				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = com.mora.iPodSync.launcher;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
 		94B08868306EBBF7006866DB /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -538,6 +677,15 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		94AD154F3071ACE300580D29 /* Build configuration list for PBXNativeTarget "iPodSyncLauncher" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				94AD15503071ACE300580D29 /* Debug */,
+				94AD15513071ACE300580D29 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		94B08844306EBBF5006866DB /* Build configuration list for PBXProject "iPodSync" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
