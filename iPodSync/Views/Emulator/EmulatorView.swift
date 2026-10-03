@@ -12,12 +12,13 @@ import AppKit
 struct EmulatorView: View {
     let simulator: IPodSimulator
     @Bindable var library: LibraryState
+    let monitor: IPodMonitor
     @AppStorage(SettingsKey.showKeyHints) private var showKeyHints = true
 
     var body: some View {
         HStack(alignment: .top, spacing: 56) {
             VStack(spacing: 20) {
-                SimulatorBar(simulator: simulator)
+                SimulatorBar(simulator: simulator, monitor: monitor)
 
                 IPodDeviceView(simulator: simulator)
                     .shadow(color: .black.opacity(0.28), radius: 28, y: 18)
@@ -36,7 +37,7 @@ struct EmulatorView: View {
             }
             .frame(width: 300)
 
-            MacLibraryPanel(library: library, simulator: simulator)
+            MacLibraryPanel(library: library, simulator: simulator, monitor: monitor)
                 .frame(width: 384)
                 .frame(maxHeight: .infinity, alignment: .top)
         }
@@ -67,7 +68,7 @@ struct Wallpaper: View {
 }
 
 #Preview("EmulatorView · emulador (iPod + En tu Mac)") {
-    EmulatorView(simulator: IPodSimulator(), library: LibraryState())
+    EmulatorView(simulator: IPodSimulator(), library: LibraryState(), monitor: IPodMonitor())
         .frame(width: 800, height: 760)
         .background(Wallpaper())
 }

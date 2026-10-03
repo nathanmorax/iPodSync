@@ -58,6 +58,10 @@ final class IPodSimulator {
     var songs: [Song]
     var backlightOn = false
     private(set) var isConnected = true
+    /// true = iPod de prueba (Ajustes › Simular un iPod). false = sigue al iPod real conectado.
+    private(set) var isSimulated = true
+    /// El iPod real conectado (nil con el simulado o si no hay ninguno).
+    private(set) var device: IPodDevice?
     private(set) var recentIDs: [Song.ID]
     private(set) var nav: [NavEntry] = [NavEntry(screen: .main)]
     private(set) var transfer: TransferState?
@@ -101,9 +105,30 @@ final class IPodSimulator {
     }
 
     var musicGB: Double { onDeviceSongs.map(\.sizeMB).reduce(0, +) / 1024 }
-    var freeGB: Double { MockLibrary.capacityGB - otherUsedGB - musicGB }
-    var usedOtherFraction: Double { otherUsedGB / MockLibrary.capacityGB }
-    var usedMusicFraction: Double { musicGB / MockLibrary.capacityGB }
+
+    /// Nombre a mostrar: el del iPod real o "iPod classic".
+    var deviceName: String { device?.name ?? "iPod classic" }
+
+    /// Capacidad en GB: la real del disco o la de prueba.
+    var capacityGB: Double {
+        if let device, device.totalGB > 0 { return device.totalGB }
+        return MockLibrary.capacityGB
+    }
+
+    var freeGB: Double {
+        if let device { return device.freeGB }
+        return MockLibrary.capacityGB - otherUsedGB - musicGB
+    }
+
+    var usedMusicFraction: Double { musicGB / capacityGB }
+
+    var usedOtherFraction: Double {
+        if device != nil {
+            return max(0, (capacityGB - freeGB) / capacityGB - usedMusicFraction)
+        }
+        return otherUsedGB / MockLibrary.capacityGB
+    }
+
     var usedFraction: Double { usedOtherFraction + usedMusicFraction }
 
     var freeSpaceText: String {
@@ -194,6 +219,29 @@ final class IPodSimulator {
 
     // MARK: - Conexión
 
+    /// Lo llama IPodMonitor: con el iPod real, "conectado" sigue al cable; con el simulado, no cambia nada.
+    func attach(device: IPodDevice?, simulated: Bool) {
+        let wasSimulated = isSimulated
+        isSimulated = simulated
+        self.device = simulated ? nil : device
+
+        if simulated {
+            if !wasSimulated {
+                isConnected = true
+                nav = [NavEntry(screen: .main)]
+            }
+            return
+        }
+
+        let connected = device != nil
+        if connected != isConnected {
+            if !connected { cancelTransfers() }
+            nav = [NavEntry(screen: .main)]
+            withAnimation(.easeInOut(duration: 0.3)) { isConnected = connected }
+        }
+    }
+
+    /// Solo para el iPod simulado; el real se expulsa con IPodMonitor.eject().
     func eject() {
         cancelTransfers()
         isConnected = false

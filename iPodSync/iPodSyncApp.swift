@@ -13,15 +13,17 @@ struct iPodSyncApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @State private var simulator = IPodSimulator()
     @State private var library = LibraryState()
+    @State private var monitor = IPodMonitor()
 
     var body: some Scene {
         // Ventana estándar: se puede mover, cambiar de tamaño, minimizar y poner en pantalla completa.
         // macOS recuerda su tamaño y posición entre aperturas.
         Window("iPodSync", id: "main") {
-            ContentView(simulator: simulator, library: library)
+            ContentView(simulator: simulator, library: library, monitor: monitor)
                 .task {
                     appDelegate.simulator = simulator
                     appDelegate.library = library
+                    appDelegate.monitor = monitor
                 }
         }
         // Ventana sin marco ni barra de título (tipo emulador). Transparente gracias a
@@ -30,7 +32,7 @@ struct iPodSyncApp: App {
         .defaultPosition(.center)
         .windowResizability(.contentSize)
         .commands {
-            IPodSyncCommands(simulator: simulator, library: library)
+            IPodSyncCommands(simulator: simulator, library: library, monitor: monitor)
         }
 
         Settings {
@@ -45,6 +47,7 @@ struct iPodSyncApp: App {
 struct IPodSyncCommands: Commands {
     let simulator: IPodSimulator
     let library: LibraryState
+    let monitor: IPodMonitor
 
     var body: some Commands {
         // Archivo
@@ -97,11 +100,16 @@ struct IPodSyncCommands: Commands {
 
             Divider()
 
-            Button("Expulsar") { simulator.eject() }
+            Button("Expulsar") { monitor.eject() }
                 .keyboardShortcut("e", modifiers: .command)
-                .disabled(!simulator.isConnected)
-            Button("Conectar") { simulator.connect() }
-                .disabled(simulator.isConnected)
+                .disabled(!monitor.canEject)
+            if simulator.isSimulated {
+                Button("Conectar iPod de prueba") { monitor.connectSimulated() }
+                    .disabled(simulator.isConnected)
+            } else {
+                // Por si el iPod no se detecta solo: elegirlo a mano también lo registra.
+                Button(monitor.hasAccess ? "Cambiar acceso al iPod…" : "Elegir iPod y dar acceso…") { monitor.requestAccess() }
+            }
         }
     }
 }
@@ -112,12 +120,13 @@ struct IPodSyncCommands: Commands {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     var simulator: IPodSimulator?
     var library: LibraryState?
+    var monitor: IPodMonitor?
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
 
     @MainActor
     func applicationDockMenu(_ sender: NSApplication) -> NSMenu? {
-        guard let simulator, let library else { return nil }
+        guard let simulator, let library, let monitor else { return nil }
         let menu = NSMenu()
 
         for scope in LibraryScope.allCases {
@@ -133,9 +142,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if simulator.isTransferring {
             menu.addItem(ActionMenuItem(title: "Cancelar envíos") { simulator.cancelTransfers() })
         }
-        menu.addItem(simulator.isConnected
-                     ? ActionMenuItem(title: "Expulsar iPod") { simulator.eject() }
-                     : ActionMenuItem(title: "Conectar iPod") { simulator.connect() })
+        if simulator.isConnected {
+            menu.addItem(ActionMenuItem(title: "Expulsar iPod") { monitor.eject() })
+        } else if simulator.isSimulated {
+            menu.addItem(ActionMenuItem(title: "Conectar iPod de prueba") { monitor.connectSimulated() })
+        }
         return menu
     }
 }

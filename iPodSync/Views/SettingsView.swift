@@ -11,6 +11,7 @@ struct SettingsView: View {
     @AppStorage(SettingsKey.rowDensity) private var density = "regular"
     @AppStorage(SettingsKey.lcdTint) private var lcdTint = "green"
     @AppStorage(SettingsKey.showKeyHints) private var showKeyHints = true
+    @AppStorage(SettingsKey.simulateIPod) private var simulateIPod = false
 
     var body: some View {
         Form {
@@ -37,6 +38,16 @@ struct SettingsView: View {
                 Toggle("Mostrar atajos de teclado bajo el iPod", isOn: $showKeyHints)
             } header: {
                 Text("iPod")
+            }
+
+            Section {
+                Toggle("Simular un iPod (para pruebas)", isOn: $simulateIPod)
+                Text("Usa un iPod de prueba con canciones de ejemplo en lugar del iPod conectado. Sirve para trabajar sin el iPod a la mano.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            } header: {
+                Text("Pruebas")
             }
         }
         .formStyle(.grouped)

@@ -12,6 +12,7 @@ import UniformTypeIdentifiers
 struct MacLibraryPanel: View {
     @Bindable var library: LibraryState
     let simulator: IPodSimulator
+    let monitor: IPodMonitor
 
     @FocusState private var searchFocused: Bool
     @State private var isFileDropTarget = false
@@ -39,6 +40,8 @@ struct MacLibraryPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             header
+            if needsAccess { accessBanner }
+            if !simulator.isSimulated && monitor.device == nil { connectHint }
             searchField
             filterChips
             content
@@ -101,6 +104,56 @@ struct MacLibraryPanel: View {
         }
         // El encabezado del panel también mueve la ventana.
         .background(WindowDragArea())
+    }
+
+    // MARK: Permiso para entrar al iPod
+
+    private var needsAccess: Bool {
+        !simulator.isSimulated && monitor.device != nil && !monitor.hasAccess
+    }
+
+    private var accessBanner: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "lock.shield")
+                .font(.system(size: 18))
+                .foregroundStyle(.tint)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Dale acceso a “\(monitor.device?.name ?? "tu iPod")”")
+                    .font(.system(size: 12, weight: .semibold))
+                Text("macOS pide que elijas el iPod una vez para que iPodSync pueda leer y copiar música.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Button("Dar acceso…") { monitor.requestAccess() }
+                    .controlSize(.small)
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.accentColor.opacity(0.15), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .accessibilityElement(children: .contain)
+    }
+
+    private var connectHint: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "cable.connector")
+                .font(.system(size: 16))
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Conecta tu iPod con el cable USB")
+                    .font(.system(size: 12, weight: .semibold))
+                Text("Se detecta solo. Si no aparece, elígelo a mano.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Button("Elegir iPod…") { monitor.requestAccess() }
+                    .controlSize(.small)
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.quaternary, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 
     private var searchField: some View {
@@ -225,7 +278,7 @@ struct MacLibraryPanel: View {
 
             CapacityBar(other: simulator.usedOtherFraction,
                         music: simulator.usedMusicFraction,
-                        pending: toSendGB / MockLibrary.capacityGB)
+                        pending: toSendGB / simulator.capacityGB)
 
             HStack(spacing: 12) {
                 legend("Otros", Color.gray)
@@ -243,7 +296,7 @@ struct MacLibraryPanel: View {
     }
 
     private var sendTitle: String {
-        guard simulator.isConnected else { return "iPod desconectado" }
+        guard simulator.isConnected else { return simulator.isSimulated ? "iPod desconectado" : "Conecta tu iPod" }
         return selectedSendable.isEmpty ? "Enviar \(pending.count)" : "Enviar selección (\(selectedSendable.count))"
     }
 
@@ -407,7 +460,7 @@ struct CapacityBar: View {
 }
 
 #Preview("MacLibraryPanel · En tu Mac") {
-    MacLibraryPanel(library: LibraryState(), simulator: IPodSimulator())
+    MacLibraryPanel(library: LibraryState(), simulator: IPodSimulator(), monitor: IPodMonitor())
         .frame(width: 384, height: 640)
         .padding(30)
         .background(Wallpaper())
@@ -416,7 +469,7 @@ struct CapacityBar: View {
 #Preview("MacLibraryPanel · iPod desconectado") {
     let sim = IPodSimulator()
     sim.eject()
-    return MacLibraryPanel(library: LibraryState(), simulator: sim)
+    return MacLibraryPanel(library: LibraryState(), simulator: sim, monitor: IPodMonitor())
         .frame(width: 384, height: 640)
         .padding(30)
         .background(Wallpaper())

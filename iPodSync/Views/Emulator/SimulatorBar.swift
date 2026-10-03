@@ -10,6 +10,7 @@ import AppKit
 
 struct SimulatorBar: View {
     let simulator: IPodSimulator
+    let monitor: IPodMonitor
     @State private var copiedShot = false
 
     var body: some View {
@@ -42,11 +43,7 @@ struct SimulatorBar: View {
                 }
                 .disabled(!simulator.isConnected)
 
-                barButton(simulator.isConnected ? "Expulsar" : "Conectar",
-                          systemImage: simulator.isConnected ? "eject" : "cable.connector",
-                          help: simulator.isConnected ? "Expulsar el iPod (⌘E)" : "Volver a conectar el iPod") {
-                    withAnimation { simulator.isConnected ? simulator.eject() : simulator.connect() }
-                }
+                ejectButton
             }
         }
         .padding(.vertical, 10)
@@ -58,10 +55,33 @@ struct SimulatorBar: View {
         .environment(\.colorScheme, .dark)
     }
 
+    /// Expulsar el iPod. Desconectado: con el simulado se puede "conectar"; con el real, hay que usar el cable.
+    @ViewBuilder
+    private var ejectButton: some View {
+        if simulator.isConnected {
+            barButton(monitor.isEjecting ? "Expulsando…" : "Expulsar",
+                      systemImage: "eject",
+                      help: "Expulsar el iPod (⌘E)") {
+                monitor.eject()
+            }
+            .disabled(monitor.isEjecting)
+        } else {
+            barButton("Conectar",
+                      systemImage: "cable.connector",
+                      help: simulator.isSimulated ? "Volver a conectar el iPod de prueba" : "Conecta tu iPod con el cable USB") {
+                monitor.connectSimulated()
+            }
+            .disabled(!simulator.isSimulated)
+        }
+    }
+
     private var title: String {
         if copiedShot { return "Captura copiada" }
-        guard simulator.isConnected else { return "iPod classic · desconectado" }
-        return "iPod classic · \(simulator.freeSpaceText)"
+        if monitor.isEjecting { return "Expulsando…" }
+        guard simulator.isConnected else {
+            return simulator.isSimulated ? "iPod de prueba · desconectado" : "Conecta tu iPod"
+        }
+        return "\(simulator.deviceName) · \(simulator.freeSpaceText)"
     }
 
     private func barButton(_ title: String,
@@ -97,7 +117,7 @@ struct SimulatorBar: View {
 }
 
 #Preview("SimulatorBar · barra del simulador") {
-    SimulatorBar(simulator: IPodSimulator())
+    SimulatorBar(simulator: IPodSimulator(), monitor: IPodMonitor())
         .padding(30)
         .background(Wallpaper())
 }
@@ -105,7 +125,7 @@ struct SimulatorBar: View {
 #Preview("SimulatorBar · desconectado") {
     let sim = IPodSimulator()
     sim.eject()
-    return SimulatorBar(simulator: sim)
+    return SimulatorBar(simulator: sim, monitor: IPodMonitor())
         .padding(30)
         .background(Wallpaper())
 }
