@@ -297,8 +297,95 @@ struct PixelGrid: View {
     }
 }
 
-#Preview("Menú") {
+#Preview("LCDScreen · menú") {
     LCDScreen(simulator: IPodSimulator())
         .frame(width: 204, height: 152)
+        .padding()
+}
+
+#Preview("LCDScreen · desconectado") {
+    let sim = IPodSimulator()
+    sim.eject()
+    return LCDScreen(simulator: sim)
+        .frame(width: 204, height: 152)
+        .padding()
+}
+
+#Preview("LCDScreen · enviando (corre solo)") {
+    let sim = IPodSimulator()
+    sim.sendAll(sim.songs.filter { !$0.isOnDevice }.prefix(2).map(\.id))
+    return LCDScreen(simulator: sim)
+        .frame(width: 204, height: 152)
+        .padding()
+}
+
+#Preview("LCDListView · lista") {
+    let sim = IPodSimulator()
+    return LCDListView(rows: sim.rows(for: .main), selection: 1, scroll: 0, background: Theme.lcdBackground)
+        .frame(width: 204, height: 133)
+        .background(Theme.lcdBackground)
+        .padding()
+}
+
+#Preview("LCDMenuRow · fila normal y seleccionada") {
+    VStack(spacing: 0) {
+        LCDMenuRow(row: LCDRow(id: "a", title: "Canciones", value: "3"), isSelected: false, background: Theme.lcdBackground)
+        LCDMenuRow(row: LCDRow(id: "b", title: "Artistas", value: "3"), isSelected: true, background: Theme.lcdBackground)
+    }
+    .frame(width: 204)
+    .background(Theme.lcdBackground)
+    .padding()
+}
+
+#Preview("LCDScrollBar · barra de desplazamiento") {
+    LCDScrollBar(total: 20, scroll: 6, visible: 7)
+        .frame(width: 6, height: 130)
+        .padding()
+        .background(Theme.lcdBackground)
+}
+
+#Preview("LCDTransferView · recibiendo canción") {
+    LCDTransferView(state: TransferState(song: MockLibrary.songs[1], position: 1, total: 3, progress: 0.48))
+        .frame(width: 204, height: 133)
+        .background(Theme.lcdBackground)
+        .padding()
+}
+
+#Preview("LCDTransferView · listo") {
+    LCDTransferView(state: TransferState(song: MockLibrary.songs[1], position: 3, total: 3, progress: 1, finished: true))
+        .frame(width: 204, height: 133)
+        .background(Theme.lcdBackground)
+        .padding()
+}
+
+#Preview("LCDSegmentedBar · bloques de progreso") {
+    LCDSegmentedBar(progress: 0.6)
+        .padding()
+        .background(Theme.lcdBackground)
+}
+
+#Preview("LCDStorageView · espacio") {
+    LCDStorageView(simulator: IPodSimulator())
+        .frame(width: 204, height: 133)
+        .background(Theme.lcdBackground)
+        .padding()
+}
+
+#Preview("BatteryIndicator · batería") {
+    BatteryIndicator(level: 3)
+        .padding()
+        .background(Theme.lcdBackground)
+}
+
+#Preview("BlinkingCursor · cursor") {
+    BlinkingCursor()
+        .padding()
+        .background(Theme.lcdBackground)
+}
+
+#Preview("PixelGrid · textura de píxeles") {
+    PixelGrid()
+        .frame(width: 204, height: 152)
+        .background(Theme.lcdBackground)
         .padding()
 }

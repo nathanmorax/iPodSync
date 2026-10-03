@@ -99,8 +99,14 @@ struct PressableStyle: ButtonStyle {
     }
 }
 
-#Preview {
+#Preview("IPodDeviceView · iPod completo") {
     IPodDeviceView(simulator: IPodSimulator())
         .padding(40)
         .background(Theme.stage)
+}
+
+#Preview("ClickWheel · rueda de clic") {
+    ClickWheel(simulator: IPodSimulator())
+        .padding(30)
+        .background(Theme.ipodBody)
 }

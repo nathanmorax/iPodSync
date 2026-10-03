@@ -42,7 +42,7 @@ struct ContentView: View {
     }
 }
 
-#Preview {
+#Preview("ContentView · ventana completa") {
     ContentView(simulator: IPodSimulator(), library: LibraryState())
         .frame(width: 800, height: 760)
         .background(Wallpaper())

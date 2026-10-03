@@ -96,8 +96,16 @@ struct SimulatorBar: View {
     }
 }
 
-#Preview {
+#Preview("SimulatorBar · barra del simulador") {
     SimulatorBar(simulator: IPodSimulator())
+        .padding(30)
+        .background(Wallpaper())
+}
+
+#Preview("SimulatorBar · desconectado") {
+    let sim = IPodSimulator()
+    sim.eject()
+    return SimulatorBar(simulator: sim)
         .padding(30)
         .background(Wallpaper())
 }

@@ -151,7 +151,7 @@ struct SongContextMenu: View {
     }
 }
 
-#Preview {
+#Preview("SongRow · filas de canción") {
     let sim = IPodSimulator()
     let lib = LibraryState()
     return LibraryCard {
@@ -161,4 +161,24 @@ struct SongContextMenu: View {
     }
     .padding()
     .frame(width: 480)
+}
+
+#Preview("SyncStatusView · los 4 estados") {
+    VStack(alignment: .trailing, spacing: 14) {
+        SyncStatusView(status: .notOnDevice, canSend: true) {}
+        SyncStatusView(status: .queued, canSend: true) {}
+        SyncStatusView(status: .sending(0.48), canSend: true) {}
+        SyncStatusView(status: .onDevice, canSend: true) {}
+    }
+    .frame(width: 140)
+    .padding()
+}
+
+#Preview("SongContextMenu · menú contextual (clic en el botón)") {
+    let sim = IPodSimulator()
+    return Menu("Menú de \(sim.songs[1].title)") {
+        SongContextMenu(song: sim.songs[1], simulator: sim)
+    }
+    .fixedSize()
+    .padding()
 }

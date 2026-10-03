@@ -89,3 +89,12 @@ struct TransferHUD: View {
             : "\(t.position) de \(t.total)"
     }
 }
+
+#Preview("TransferHUD · progreso bajo el iPod (sin usar, corre solo)") {
+    let sim = IPodSimulator()
+    sim.sendAll(sim.songs.filter { !$0.isOnDevice }.prefix(2).map(\.id))
+    return TransferHUD(simulator: sim)
+        .frame(height: 90, alignment: .top)
+        .padding(30)
+        .background(Wallpaper())
+}

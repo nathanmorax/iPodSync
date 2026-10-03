@@ -66,8 +66,13 @@ struct Wallpaper: View {
     }
 }
 
-#Preview {
+#Preview("EmulatorView · emulador (iPod + En tu Mac)") {
     EmulatorView(simulator: IPodSimulator(), library: LibraryState())
         .frame(width: 800, height: 760)
         .background(Wallpaper())
+}
+
+#Preview("Wallpaper · fondo solo para Previews") {
+    Wallpaper()
+        .frame(width: 400, height: 260)
 }

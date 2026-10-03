@@ -130,7 +130,12 @@ struct StorageFooter: View {
     }
 }
 
-#Preview {
+#Preview("LibraryPane · diseño anterior (sin usar)") {
     LibraryPane(library: LibraryState(), simulator: IPodSimulator())
         .frame(width: 520, height: 600)
+}
+
+#Preview("StorageFooter · pie con espacio") {
+    StorageFooter(onDeviceCount: 3, freeSpaceText: "65,3 GB libres", usedOther: 0.58, usedMusic: 0.02)
+        .frame(width: 420)
 }

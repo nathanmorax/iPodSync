@@ -126,3 +126,9 @@ struct WindowDragArea: NSViewRepresentable {
         }
     }
 }
+
+#Preview("WindowTrafficLights · semáforo de la ventana") {
+    WindowTrafficLights()
+        .padding()
+        .background(Color.black.opacity(0.8))
+}

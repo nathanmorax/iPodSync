@@ -406,9 +406,41 @@ struct CapacityBar: View {
     }
 }
 
-#Preview {
+#Preview("MacLibraryPanel · En tu Mac") {
     MacLibraryPanel(library: LibraryState(), simulator: IPodSimulator())
         .frame(width: 384, height: 640)
         .padding(30)
         .background(Wallpaper())
+}
+
+#Preview("MacLibraryPanel · iPod desconectado") {
+    let sim = IPodSimulator()
+    sim.eject()
+    return MacLibraryPanel(library: LibraryState(), simulator: sim)
+        .frame(width: 384, height: 640)
+        .padding(30)
+        .background(Wallpaper())
+}
+
+#Preview("IndexedSongsList · canciones por letra + A–Z") {
+    let sim = IPodSimulator()
+    return IndexedSongsList(songs: sim.songs, simulator: sim, library: LibraryState())
+        .frame(width: 350, height: 420)
+        .padding()
+        .background(.regularMaterial)
+        .environment(\.colorScheme, .dark)
+}
+
+#Preview("AlphabetIndex · índice A–Z") {
+    AlphabetIndex(available: ["A", "C", "D", "E", "M", "N", "P"]) { _ in }
+        .frame(height: 380)
+        .padding()
+        .environment(\.colorScheme, .dark)
+        .background(Color.black)
+}
+
+#Preview("CapacityBar · barra de espacio") {
+    CapacityBar(other: 0.58, music: 0.02, pending: 0.03)
+        .frame(width: 320)
+        .padding()
 }

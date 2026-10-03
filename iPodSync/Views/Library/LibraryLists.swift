@@ -233,3 +233,64 @@ struct AlbumDetailView: View {
         }
     }
 }
+
+#Preview("LibraryCard · tarjeta contenedora") {
+    LibraryCard {
+        Text("Contenido").padding()
+        Divider()
+        Text("Más contenido").padding()
+    }
+    .frame(width: 300)
+    .padding()
+}
+
+#Preview("SongsListView · lista de canciones") {
+    let sim = IPodSimulator()
+    return ScrollView {
+        SongsListView(songs: sim.songs, simulator: sim, library: LibraryState())
+    }
+    .frame(width: 420, height: 500)
+    .padding()
+}
+
+#Preview("ArtistsListView · agrupado por artista") {
+    let sim = IPodSimulator()
+    return ScrollView {
+        ArtistsListView(songs: sim.songs, simulator: sim, library: LibraryState())
+    }
+    .frame(width: 420, height: 500)
+    .padding()
+}
+
+#Preview("ArtistHeader · encabezado de artista") {
+    ArtistHeader(name: "Natalia Lafourcade", count: 2, hue: 0.84)
+        .frame(width: 360)
+        .padding()
+}
+
+#Preview("AlbumsGridView · cuadrícula de álbumes") {
+    let sim = IPodSimulator()
+    return ScrollView {
+        AlbumsGridView(songs: sim.songs, simulator: sim) { _ in }
+    }
+    .frame(width: 420, height: 500)
+    .padding()
+}
+
+#Preview("AlbumArtwork · portada con estados") {
+    HStack(spacing: 12) {
+        AlbumArtwork(song: MockLibrary.songs[0], status: .onDevice)
+        AlbumArtwork(song: MockLibrary.songs[1], status: .sending(0.48))
+        AlbumArtwork(song: MockLibrary.songs[2], status: .queued)
+        AlbumArtwork(song: MockLibrary.songs[4], status: .notOnDevice)
+    }
+    .frame(height: 110)
+    .padding()
+}
+
+#Preview("AlbumDetailView · detalle de álbum") {
+    let sim = IPodSimulator()
+    return AlbumDetailView(song: sim.songs[1], simulator: sim, library: LibraryState()) {}
+        .frame(width: 420)
+        .padding()
+}

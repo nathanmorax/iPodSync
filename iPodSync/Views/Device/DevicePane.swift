@@ -87,7 +87,12 @@ struct KeyHints: View {
     }
 }
 
-#Preview {
+#Preview("DevicePane · diseño anterior (sin usar)") {
     DevicePane(simulator: IPodSimulator())
         .frame(width: 520, height: 660)
+}
+
+#Preview("KeyHints · atajos bajo el iPod") {
+    KeyHints()
+        .padding()
 }
