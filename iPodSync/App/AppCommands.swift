@@ -74,6 +74,9 @@ struct IPodSyncCommands: Commands {
             } else {
                 // Por si el iPod no se detecta solo: elegirlo a mano también lo registra.
                 Button(monitor.hasAccess ? "Cambiar acceso al iPod…" : "Elegir iPod y dar acceso…") { monitor.requestAccess() }
+                Button("Volver a leer la música del iPod") { monitor.reloadTracks() }
+                    .keyboardShortcut("r", modifiers: [.command, .shift])
+                    .disabled(monitor.device == nil || !monitor.hasAccess || monitor.isLoadingTracks)
             }
         }
     }

@@ -191,7 +191,7 @@ struct MacLibraryPanel: View {
                 Button {
                     library.statusFilter = filter
                 } label: {
-                    Text(filter == .notOnDevice ? "\(filter.title) · \(pending.count)" : filter.title)
+                    Text(chipTitle(filter))
                         .font(.system(size: 11, weight: isOn ? .semibold : .regular))
                         .monospacedDigit()
                         .padding(.horizontal, 10)
@@ -206,11 +206,29 @@ struct MacLibraryPanel: View {
         }
     }
 
+    private func chipTitle(_ filter: LibraryStatusFilter) -> String {
+        switch filter {
+        case .notOnDevice:
+            return "\(filter.title) · \(pending.count)"
+        case .onDevice where showsIPodMusic && !monitor.tracks.isEmpty:
+            return "\(filter.title) · \(monitor.tracks.count)"
+        default:
+            return filter.title
+        }
+    }
+
     // MARK: Contenido
+
+    /// Con el iPod real, "En el iPod" muestra la música que trae el iPod (leída de su iTunesDB).
+    private var showsIPodMusic: Bool {
+        !simulator.isSimulated && library.statusFilter == .onDevice
+    }
 
     @ViewBuilder
     private var content: some View {
-        if visible.isEmpty {
+        if showsIPodMusic {
+            IPodMusicView(monitor: monitor, scope: library.scope, query: library.query)
+        } else if visible.isEmpty {
             emptyState
         } else {
             switch library.scope {

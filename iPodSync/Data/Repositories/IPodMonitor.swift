@@ -21,6 +21,11 @@ final class IPodMonitor {
     /// Ya tenemos permiso del sandbox para entrar al disco del iPod.
     private(set) var hasAccess = false
     private(set) var isEjecting = false
+    /// Canciones leídas del iPod (iTunesDB).
+    private(set) var tracks: [IPodTrack] = []
+    private(set) var isLoadingTracks = false
+    /// Por qué no se pudo leer la música (nil si todo bien).
+    private(set) var tracksError: String?
     /// Mensaje para mostrar en una alerta (no se pudo expulsar, elegiste otra carpeta…).
     var alertMessage: String?
 
@@ -32,6 +37,8 @@ final class IPodMonitor {
     @ObservationIgnored private var observers: [NSObjectProtocol] = []
     @ObservationIgnored private var accessedURL: URL?
     @ObservationIgnored private var didStartAccess = false
+    @ObservationIgnored private var tracksDeviceID: String?
+    @ObservationIgnored private var tracksTask: Task<Void, Never>?
 
     // MARK: - Inicio
 
@@ -72,6 +79,55 @@ final class IPodMonitor {
         }
 
         simulator?.attach(device: device, simulated: isSimulating)
+
+        // Música del iPod: se lee una vez por iPod conectado (o con "Volver a leer").
+        if let device, hasAccess, let url = accessedURL {
+            if tracksDeviceID != device.id { loadTracks(from: url, deviceID: device.id) }
+        } else if tracksDeviceID != nil || !tracks.isEmpty {
+            clearTracks()
+        }
+    }
+
+    // MARK: - Música del iPod
+
+    /// Vuelve a leer la base de datos del iPod (menú iPod › Volver a leer la música).
+    func reloadTracks() {
+        guard let device, let url = accessedURL else { return }
+        loadTracks(from: url, deviceID: device.id)
+    }
+
+    private func loadTracks(from volume: URL, deviceID: String) {
+        tracksTask?.cancel()
+        tracksDeviceID = deviceID
+        isLoadingTracks = true
+        tracksError = nil
+
+        tracksTask = Task {
+            // Leer y descifrar el archivo fuera del hilo principal (puede tener miles de canciones).
+            let result: Result<[IPodTrack], Error> = await Task.detached(priority: .userInitiated) {
+                Result { try ITunesDBReader.readTracks(volume: volume) }
+            }.value
+            guard !Task.isCancelled, tracksDeviceID == deviceID else { return }
+
+            isLoadingTracks = false
+            switch result {
+            case .success(let list):
+                tracks = list.sorted { $0.title.localizedCompare($1.title) == .orderedAscending }
+            case .failure(let error):
+                tracks = []
+                tracksError = error.localizedDescription
+            }
+            simulator?.setDeviceTracks(tracks)
+        }
+    }
+
+    private func clearTracks() {
+        tracksTask?.cancel()
+        tracksDeviceID = nil
+        tracks = []
+        isLoadingTracks = false
+        tracksError = nil
+        simulator?.setDeviceTracks([])
     }
 
     // MARK: - Buscar el iPod entre los discos montados

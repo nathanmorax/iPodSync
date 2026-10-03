@@ -28,6 +28,11 @@ final class IPodSimulator {
     private(set) var isSimulated = true
     /// El iPod real conectado (nil con el simulado o si no hay ninguno).
     private(set) var device: IPodDevice?
+    /// Canciones que tiene el iPod real (leídas de su iTunesDB).
+    private(set) var deviceTracks: [IPodTrack] = []
+    /// Canciones enviadas en esta sesión al iPod real (el envío todavía es simulado).
+    private(set) var sentIDs: Set<Song.ID> = []
+    @ObservationIgnored private var trackKeys: Set<String> = []
     private(set) var recentIDs: [Song.ID]
     private(set) var nav: [NavEntry] = [NavEntry(screen: .main)]
     private(set) var transfer: TransferState?
@@ -57,7 +62,30 @@ final class IPodSimulator {
     }
 
     var onDeviceSongs: [Song] {
-        songs.filter(\.isOnDevice).sorted { $0.title.localizedCompare($1.title) == .orderedAscending }
+        songs.filter(isOnIPod).sorted { $0.title.localizedCompare($1.title) == .orderedAscending }
+    }
+
+    /// ¿Esta canción de la Mac ya está en el iPod?
+    /// Simulado: la marca de prueba. Real: si el iPod tiene una con el mismo título y artista.
+    func isOnIPod(_ song: Song) -> Bool {
+        if isSimulated { return song.isOnDevice }
+        return sentIDs.contains(song.id) || trackKeys.contains(Self.matchKey(title: song.title, artist: song.artist))
+    }
+
+    func setDeviceTracks(_ tracks: [IPodTrack]) {
+        trackKeys = Set(tracks.map { Self.matchKey(title: $0.title, artist: $0.artist) })
+        deviceTracks = tracks
+    }
+
+    static func matchKey(title: String, artist: String) -> String {
+        "\(title)|\(artist)"
+            .folding(options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive], locale: nil)
+            .trimmingCharacters(in: .whitespaces)
+    }
+
+    /// Títulos para el menú Canciones del LCD.
+    private var lcdSongTitles: [String] {
+        isSimulated ? onDeviceSongs.map(\.title) : deviceTracks.map(\.title)
     }
 
     var recentSongs: [Song] {
@@ -65,12 +93,16 @@ final class IPodSimulator {
     }
 
     var artists: [(name: String, count: Int)] {
-        Dictionary(grouping: onDeviceSongs, by: \.artist)
+        let names = isSimulated ? onDeviceSongs.map(\.artist) : deviceTracks.map(\.artist)
+        return Dictionary(grouping: names, by: { $0 })
             .map { (name: $0.key, count: $0.value.count) }
             .sorted { $0.name.localizedCompare($1.name) == .orderedAscending }
     }
 
-    var musicGB: Double { onDeviceSongs.map(\.sizeMB).reduce(0, +) / 1024 }
+    var musicGB: Double {
+        if isSimulated { return onDeviceSongs.map(\.sizeMB).reduce(0, +) / 1024 }
+        return Double(deviceTracks.map(\.sizeBytes).reduce(0, +)) / 1_000_000_000
+    }
 
     /// Nombre a mostrar: el del iPod real o "iPod classic".
     var deviceName: String { device?.name ?? "iPod classic" }
@@ -108,7 +140,7 @@ final class IPodSimulator {
         case .main:
             return [
                 LCDRow(id: "recents",  title: "Recientes", value: "\(recentSongs.count)", action: .open(.recents)),
-                LCDRow(id: "songs",    title: "Canciones", value: "\(onDeviceSongs.count)", action: .open(.songs)),
+                LCDRow(id: "songs",    title: "Canciones", value: "\(lcdSongTitles.count)", action: .open(.songs)),
                 LCDRow(id: "artists",  title: "Artistas",  value: "\(artists.count)", action: .open(.artists)),
                 LCDRow(id: "storage",  title: "Espacio",   action: .open(.storage)),
                 LCDRow(id: "settings", title: "Ajustes",   action: .open(.settings))
@@ -116,7 +148,7 @@ final class IPodSimulator {
         case .recents:
             return recentSongs.map { LCDRow(id: $0.id.uuidString, title: $0.title) }
         case .songs:
-            return onDeviceSongs.map { LCDRow(id: $0.id.uuidString, title: $0.title) }
+            return lcdSongTitles.enumerated().map { LCDRow(id: "song-\($0.offset)", title: $0.element) }
         case .artists:
             return artists.map { LCDRow(id: $0.name, title: $0.name, value: "\($0.count)") }
         case .storage:
@@ -130,7 +162,7 @@ final class IPodSimulator {
     }
 
     func status(of song: Song) -> SongSyncStatus {
-        if song.isOnDevice { return .onDevice }
+        if isOnIPod(song) { return .onDevice }
         if let transfer, transfer.song.id == song.id, !transfer.finished { return .sending(transfer.progress) }
         if queue.contains(song.id) { return .queued }
         return .notOnDevice
@@ -288,6 +320,7 @@ final class IPodSimulator {
 
             if let index = songs.firstIndex(where: { $0.id == id }) {
                 songs[index].isOnDevice = true
+                if !isSimulated { sentIDs.insert(id) }
             }
             recentIDs.removeAll { $0 == id }
             recentIDs.insert(id, at: 0)
