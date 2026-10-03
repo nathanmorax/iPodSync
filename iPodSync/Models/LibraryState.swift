@@ -21,6 +21,10 @@ final class LibraryState {
         }
     }
     var query = ""
+    /// Filtro por estado: Todas, Sin enviar, En el iPod, En cola.
+    var statusFilter: LibraryStatusFilter = .all
+    /// Se incrementa con ⌘F para pedir el foco del buscador del panel.
+    var searchFocusRequest = 0
     var selectedAlbumID: Song.ID?
     var isImporting = false
 

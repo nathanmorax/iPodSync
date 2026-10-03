@@ -24,10 +24,11 @@ struct iPodSyncApp: App {
                     appDelegate.library = library
                 }
         }
-        .windowToolbarStyle(.unified)
-        .defaultSize(width: 1060, height: 680)
+        // Ventana sin marco ni barra de título (tipo emulador). Transparente gracias a
+        // .containerBackground(.clear, for: .window) en ContentView; se arrastra desde la barra del simulador.
+        .windowStyle(.plain)
         .defaultPosition(.center)
-        .windowResizability(.contentMinSize)
+        .windowResizability(.contentSize)
         .commands {
             IPodSyncCommands(simulator: simulator, library: library)
         }
@@ -50,6 +51,13 @@ struct IPodSyncCommands: Commands {
         CommandGroup(replacing: .newItem) {
             Button("Agregar a la biblioteca…") { library.isImporting = true }
                 .keyboardShortcut("o", modifiers: .command)
+        }
+
+        // Edición › Buscar
+        CommandGroup(after: .pasteboard) {
+            Divider()
+            Button("Buscar en la biblioteca") { library.searchFocusRequest += 1 }
+                .keyboardShortcut("f", modifiers: .command)
         }
 
         // Visualización

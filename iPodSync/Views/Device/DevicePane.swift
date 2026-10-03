@@ -58,7 +58,7 @@ struct KeyHints: View {
             hint(["↑", "↓"], "navegar")
             hint(["↩"], "abrir")
             hint(["esc"], "atrás")
-            Text("Arrastra canciones a la pantalla")
+            Text("arrastra al iPod")
         }
         .font(.caption)
         .foregroundStyle(.secondary)
