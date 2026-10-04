@@ -25,11 +25,11 @@ struct RootView: View {
             // Sin fondo de ventana: solo flotan el iPod y los paneles sobre el escritorio.
             .containerBackground(.clear, for: .window)
             .background(TransparentWindow())
-            .fileImporter(isPresented: $library.isImporting,
-                          allowedContentTypes: [.audio],
-                          allowsMultipleSelection: true) { result in
-                guard case .success(let urls) = result else { return }
-                Task { await simulator.importFiles(urls) }
+            // Ventana de "Abrir" suelta, no como hoja: con la ventana transparente,
+            // la hoja oscurece todo el rectángulo de la ventana y se ve un fondo negro.
+            .onChange(of: library.isImporting) { _, isImporting in
+                guard isImporting else { return }
+                chooseAudioFiles()
             }
             .iPodKeyboardNavigation(simulator)
             .onChange(of: simulator.pendingCount, initial: true) { _, pending in
@@ -76,4 +76,23 @@ struct RootView: View {
         .environment(BackupViewModel())
         .frame(width: 800, height: 760)
         .background(Wallpaper())
+}
+
+// MARK: - Agregar archivos a la biblioteca
+
+private extension RootView {
+    func chooseAudioFiles() {
+        let panel = NSOpenPanel()
+        panel.title = "Agregar a la biblioteca"
+        panel.prompt = "Agregar"
+        panel.allowedContentTypes = [.audio]
+        panel.allowsMultipleSelection = true
+        panel.canChooseDirectories = false
+        panel.begin { response in
+            library.isImporting = false
+            guard response == .OK, !panel.urls.isEmpty else { return }
+            let urls = panel.urls
+            Task { await simulator.importFiles(urls) }
+        }
+    }
 }

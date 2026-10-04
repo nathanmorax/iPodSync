@@ -53,7 +53,8 @@ struct MacLibraryPanel: View {
             sourcePicker
             if needsAccess { accessBanner }
             if !simulator.isSimulated && monitor.device == nil { connectHint }
-            toolbar
+            searchField
+            scopeTabs
             if isMac {
                 filterChips
             } else if simulator.isConnected {
@@ -142,24 +143,27 @@ struct MacLibraryPanel: View {
         .accessibilityAddTraits(isOn ? .isSelected : [])
     }
 
-    /// Buscador + 2/3 por fila (en Álbumes) + Canciones/Artistas/Álbumes.
-    private var toolbar: some View {
+    /// Canciones / Artistas / Álbumes como pestañas oscuras; en Álbumes, 2 o 3 por fila al final.
+    private var scopeTabs: some View {
         HStack(spacing: 8) {
-            searchField
+            DarkSegmented(selection: $library.scope, options: LibraryScope.allCases) { scope, isOn in
+                HStack(spacing: 5) {
+                    Image(systemName: scope.systemImage)
+                        .font(.system(size: 12))
+                    Text(scope.title)
+                        .font(.system(size: 12, weight: isOn ? .semibold : .regular))
+                        .lineLimit(1)
+                }
+                .accessibilityElement(children: .combine)
+            }
+            .help("Canciones, Artistas o Álbumes (⌘1, ⌘2, ⌘3)")
+
             if library.scope == .albums {
                 AlbumColumnsPicker()
+                    .transition(.move(edge: .trailing).combined(with: .opacity))
             }
-            Picker("Ver por", selection: $library.scope) {
-                ForEach(LibraryScope.allCases) { scope in
-                    Label(scope.title, systemImage: scope.systemImage).tag(scope)
-                }
-            }
-            .pickerStyle(.segmented)
-            .labelStyle(.iconOnly)
-            .labelsHidden()
-            .fixedSize()
-            .help("Canciones, Artistas o Álbumes (⌘1, ⌘2, ⌘3)")
         }
+        .animation(.snappy(duration: 0.2), value: library.scope)
     }
 
     // MARK: Permiso para entrar al iPod
@@ -480,23 +484,16 @@ struct MacLibraryPanel: View {
 }
 
 /// 2 o 3 álbumes por fila (se recuerda; aplica a la Mac y al iPod).
-/// Un solo botón que alterna, para no amontonar la barra.
 struct AlbumColumnsPicker: View {
     @AppStorage(SettingsKey.albumColumns) private var columnCount = 2
 
     var body: some View {
-        Button {
-            withAnimation(.snappy(duration: 0.2)) { columnCount = columnCount == 2 ? 3 : 2 }
-        } label: {
-            Image(systemName: columnCount == 2 ? "square.grid.2x2" : "square.grid.3x3")
-                .font(.system(size: 13))
-                .contentTransition(.symbolEffect(.replace))
-                .frame(width: 28, height: 28)
-                .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
-                .contentShape(Rectangle())
+        DarkSegmented(selection: $columnCount, options: [2, 3], fillsWidth: false) { count, _ in
+            Image(systemName: count == 2 ? "square.grid.2x2" : "square.grid.3x3")
+                .font(.system(size: 12))
+                .accessibilityLabel("\(count) por fila")
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel(columnCount == 2 ? "2 álbumes por fila" : "3 álbumes por fila")
-        .help("Cambiar a \(columnCount == 2 ? 3 : 2) álbumes por fila")
+        .fixedSize()
+        .help("Álbumes por fila: 2 o 3")
     }
 }

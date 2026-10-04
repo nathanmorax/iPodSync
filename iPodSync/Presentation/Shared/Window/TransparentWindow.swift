@@ -26,7 +26,8 @@ struct TransparentWindow: NSViewRepresentable {
     }
 
     private func configure(_ window: NSWindow?, _ coordinator: Coordinator) {
-        guard let window else { return }
+        // La ventana del emulador ya viene sin marco y transparente.
+        guard let window, !(window is EmulatorWindow) else { return }
 
         // Una ventana sin marco no usa la posición por defecto de SwiftUI y aparecía pegada abajo.
         // Al abrir: centrada en la pantalla donde está (macOS la deja un poco arriba del centro).
@@ -51,5 +52,9 @@ struct TransparentWindow: NSViewRepresentable {
         for button in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton] {
             window.standardWindowButton(button)?.isHidden = true
         }
+        // La barra de título (aunque sea transparente) dibuja una línea clara arriba de la ventana.
+        // Se esconde todo su contenedor; los semáforos propios están en SimulatorBar.
+        window.toolbar = nil
+        window.standardWindowButton(.closeButton)?.superview?.superview?.isHidden = true
     }
 }

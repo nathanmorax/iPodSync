@@ -2,27 +2,48 @@
 //  AppDelegate.swift
 //  iPodSync
 //
-//  Menú del Dock y cierre de la app al cerrar su única ventana.
+//  Dueño de los modelos y de la ventana del emulador; menú del Dock y cierre de la app.
 //
 
 import SwiftUI
 import AppKit
 
-/// Menú del Dock (clic derecho en el ícono) y cierre de la app al cerrar su única ventana.
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    var simulator: IPodSimulator?
-    var library: LibraryState?
-    var monitor: IPodMonitor?
+    let simulator = IPodSimulator()
+    let library = LibraryState()
+    let monitor = IPodMonitor()
+    let backup = BackupViewModel()
+
+    private var window: EmulatorWindow?
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        showMainWindow()
+    }
+
+    /// La ventana la crea AppKit (no SwiftUI) para que sea sin marco de verdad.
+    func showMainWindow() {
+        if window == nil {
+            let root = RootView(simulator: simulator, library: library, monitor: monitor)
+                .environment(backup)
+            window = EmulatorWindow(rootView: root)
+        }
+        window?.makeKeyAndOrderFront(nil)
+        NSApp.activate()
+    }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
 
-    @MainActor
+    /// Clic en el ícono del Dock con la ventana minimizada: la vuelve a mostrar.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if !flag { showMainWindow() }
+        return true
+    }
+
     func applicationDockMenu(_ sender: NSApplication) -> NSMenu? {
-        guard let simulator, let library, let monitor else { return nil }
         let menu = NSMenu()
 
         for scope in LibraryScope.allCases {
-            let item = ActionMenuItem(title: scope.title) {
+            let item = ActionMenuItem(title: scope.title) { [library] in
                 library.scope = scope
                 NSApp.activate()
             }
@@ -32,12 +53,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(.separator())
 
         if simulator.isTransferring {
-            menu.addItem(ActionMenuItem(title: "Cancelar envíos") { simulator.cancelTransfers() })
+            menu.addItem(ActionMenuItem(title: "Cancelar envíos") { [simulator] in simulator.cancelTransfers() })
         }
         if simulator.isConnected {
-            menu.addItem(ActionMenuItem(title: "Expulsar iPod") { monitor.eject() })
+            menu.addItem(ActionMenuItem(title: "Expulsar iPod") { [monitor] in monitor.eject() })
         } else if simulator.isSimulated {
-            menu.addItem(ActionMenuItem(title: "Conectar iPod de prueba") { monitor.connectSimulated() })
+            menu.addItem(ActionMenuItem(title: "Conectar iPod de prueba") { [monitor] in monitor.connectSimulated() })
         }
         return menu
     }
