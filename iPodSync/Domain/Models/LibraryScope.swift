@@ -37,9 +37,30 @@ enum LibraryScope: String, CaseIterable, Identifiable {
     }
 }
 
-/// Filtro por estado de sincronización en el panel "En tu Mac".
+/// De dónde viene la música que se ve en el panel.
+enum LibrarySource: String, CaseIterable, Identifiable {
+    case mac, iPod
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .mac:  "En mi Mac"
+        case .iPod: "En mi iPod"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .mac:  "laptopcomputer"
+        case .iPod: "ipod"
+        }
+    }
+}
+
+/// Filtro por estado en "En mi Mac".
 enum LibraryStatusFilter: String, CaseIterable, Identifiable {
-    case all, notOnDevice, onDevice, inQueue
+    case all, notOnDevice
 
     var id: String { rawValue }
 
@@ -47,24 +68,13 @@ enum LibraryStatusFilter: String, CaseIterable, Identifiable {
         switch self {
         case .all:         "Todas"
         case .notOnDevice: "Sin enviar"
-        case .onDevice:    "En el iPod"
-        case .inQueue:     "En cola"
         }
     }
 
     func matches(_ status: SongSyncStatus) -> Bool {
         switch self {
-        case .all:
-            return true
-        case .notOnDevice:
-            return status == .notOnDevice
-        case .onDevice:
-            return status == .onDevice
-        case .inQueue:
-            switch status {
-            case .queued, .sending: return true
-            default:                return false
-            }
+        case .all:         true
+        case .notOnDevice: status == .notOnDevice
         }
     }
 }

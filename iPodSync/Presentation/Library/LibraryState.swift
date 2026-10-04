@@ -21,8 +21,17 @@ final class LibraryState {
             UserDefaults.standard.set(scope.rawValue, forKey: Self.scopeKey)
         }
     }
+    /// Qué se ve: la música de la Mac o la del iPod.
+    var source: LibrarySource = .mac {
+        didSet {
+            guard source != oldValue else { return }
+            selectedAlbumID = nil
+            openIPodAlbum = nil
+            clearSelection()
+        }
+    }
     var query = ""
-    /// Filtro por estado: Todas, Sin enviar, En el iPod, En cola.
+    /// Filtro por estado en la Mac: Todas o Sin enviar.
     var statusFilter: LibraryStatusFilter = .all
     /// Se incrementa con ⌘F para pedir el foco del buscador del panel.
     var searchFocusRequest = 0

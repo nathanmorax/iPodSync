@@ -2,7 +2,7 @@
 //  MacLibraryPanel.swift
 //  iPodSync
 //
-//  Panel flotante "En tu Mac": búsqueda, filtros, lista y espacio antes de enviar.
+//  Panel flotante: "En mi Mac" / "En mi iPod", búsqueda, filtros, lista y espacio antes de enviar.
 //
 
 import SwiftUI
@@ -16,11 +16,22 @@ struct MacLibraryPanel: View {
     @Environment(BackupViewModel.self) private var backup
     @FocusState private var searchFocused: Bool
     @State private var isFileDropTarget = false
+    @Namespace private var sourceNamespace
 
     // MARK: Datos
 
+    private var isMac: Bool { library.source == .mac }
+
     private var visible: [Song] {
-        library.filter(simulator.songs).filter { library.statusFilter.matches(simulator.status(of: $0)) }
+        if isMac {
+            return library.filter(simulator.songs).filter { library.statusFilter.matches(simulator.status(of: $0)) }
+        }
+        // iPod simulado: las canciones que ya están en el iPod.
+        return library.filter(simulator.onDeviceSongs)
+    }
+
+    private var iPodCount: Int {
+        simulator.isSimulated ? simulator.onDeviceSongs.count : monitor.tracks.count
     }
 
     private var pending: [Song] {
@@ -39,14 +50,18 @@ struct MacLibraryPanel: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            header
+            sourcePicker
             if needsAccess { accessBanner }
             if !simulator.isSimulated && monitor.device == nil { connectHint }
-            searchField
-            filterChips
+            toolbar
+            if isMac {
+                filterChips
+            } else if simulator.isConnected {
+                storageBar
+            }
             content
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-            footer
+            if isMac { footer }
         }
         .padding(16)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
@@ -78,23 +93,59 @@ struct MacLibraryPanel: View {
         .accessibilityLabel("Biblioteca de la Mac")
     }
 
-    // MARK: Encabezado
+    // MARK: Encabezado: En mi Mac | En mi iPod
 
-    private var header: some View {
-        HStack(alignment: .center, spacing: 12) {
-            VStack(alignment: .leading, spacing: 1) {
-                Text("En tu Mac")
-                    .font(.title3.weight(.bold))
-                    .accessibilityAddTraits(.isHeader)
-                Text(simulator.importingCount > 0
-                     ? "Agregando \(simulator.importingCount) \(simulator.importingCount == 1 ? "archivo" : "archivos")…"
-                     : "\(simulator.songs.count) canciones · \(simulator.onDeviceSongs.count) ya en el iPod")
-                    .font(.caption)
+    private var sourcePicker: some View {
+        HStack(spacing: 2) {
+            ForEach(LibrarySource.allCases) { source in
+                sourceButton(source, count: source == .mac ? simulator.songs.count : iPodCount)
+            }
+        }
+        .padding(2)
+        .background(.black.opacity(0.3), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+        // El encabezado del panel también mueve la ventana.
+        .background(WindowDragArea())
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Ver música")
+    }
+
+    private func sourceButton(_ source: LibrarySource, count: Int) -> some View {
+        let isOn = library.source == source
+        return Button {
+            withAnimation(.snappy(duration: 0.2)) { library.source = source }
+        } label: {
+            HStack(spacing: 7) {
+                Image(systemName: source.systemImage)
+                    .font(.system(size: 14))
+                Text(source.title)
+                    .font(.system(size: 13, weight: isOn ? .semibold : .regular))
+                Text("\(count)")
+                    .font(.system(size: 11))
                     .foregroundStyle(.secondary)
                     .monospacedDigit()
                     .contentTransition(.numericText())
             }
-            Spacer(minLength: 8)
+            .foregroundStyle(isOn ? Color.primary : Color.secondary)
+            .frame(maxWidth: .infinity)
+            .frame(height: 28)
+            .background {
+                if isOn {
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .fill(.white.opacity(0.16))
+                        .matchedGeometryEffect(id: "source", in: sourceNamespace)
+                }
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(source.title), \(count) canciones")
+        .accessibilityAddTraits(isOn ? .isSelected : [])
+    }
+
+    /// Buscador + 2/3 por fila (en Álbumes) + Canciones/Artistas/Álbumes.
+    private var toolbar: some View {
+        HStack(spacing: 8) {
+            searchField
             if library.scope == .albums {
                 AlbumColumnsPicker()
             }
@@ -109,8 +160,6 @@ struct MacLibraryPanel: View {
             .fixedSize()
             .help("Canciones, Artistas o Álbumes (⌘1, ⌘2, ⌘3)")
         }
-        // El encabezado del panel también mueve la ventana.
-        .background(WindowDragArea())
     }
 
     // MARK: Permiso para entrar al iPod
@@ -168,7 +217,7 @@ struct MacLibraryPanel: View {
             Image(systemName: "magnifyingglass")
                 .foregroundStyle(.secondary)
                 .accessibilityHidden(true)
-            TextField("Buscar canción o artista", text: $library.query)
+            TextField("Buscar", text: $library.query)
                 .textFieldStyle(.plain)
                 .focused($searchFocused)
                 .onExitCommand {
@@ -187,6 +236,7 @@ struct MacLibraryPanel: View {
             }
         }
         .padding(.horizontal, 8)
+        .frame(minWidth: 120, maxWidth: .infinity)
         .frame(height: 28)
         .background(.quaternary, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
         .help("Buscar (⌘F)")
@@ -211,67 +261,88 @@ struct MacLibraryPanel: View {
                 .buttonStyle(.plain)
                 .accessibilityAddTraits(isOn ? .isSelected : [])
             }
+            Spacer(minLength: 4)
+            if simulator.importingCount > 0 {
+                HStack(spacing: 5) {
+                    ProgressView().controlSize(.mini)
+                    Text("Agregando \(simulator.importingCount)…")
+                        .monospacedDigit()
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            }
         }
     }
 
     private func chipTitle(_ filter: LibraryStatusFilter) -> String {
         switch filter {
-        case .notOnDevice:
-            return "\(filter.title) · \(pending.count)"
-        case .onDevice where showsIPodMusic && !monitor.tracks.isEmpty:
-            return "\(filter.title) · \(monitor.tracks.count)"
-        default:
-            return filter.title
+        case .notOnDevice: "\(filter.title) · \(pending.count)"
+        case .all:         filter.title
         }
     }
 
     // MARK: Contenido
 
-    /// Con el iPod real, "En el iPod" muestra la música que trae el iPod (leída de su iTunesDB).
+    /// Con el iPod real, "En mi iPod" muestra la música que trae el iPod (leída de su iTunesDB).
     private var showsIPodMusic: Bool {
-        !simulator.isSimulated && library.statusFilter == .onDevice
+        !simulator.isSimulated && library.source == .iPod
     }
 
-    /// Recordatorio de respaldo arriba de la música del iPod.
-    private var backupBar: some View {
+    /// Lo que va en lugar de los filtros cuando se ve el iPod: espacio libre y respaldo.
+    private var storageBar: some View {
         HStack(spacing: 8) {
-            Image(systemName: "externaldrive.badge.timemachine")
+            Image(systemName: "internaldrive")
                 .foregroundStyle(.secondary)
                 .accessibilityHidden(true)
-            Group {
-                if let id = monitor.device?.id, let date = backup.lastBackupDate(for: id) {
-                    Text("Último respaldo: \(date.formatted(.relative(presentation: .named)))")
-                } else {
-                    Text("Sin respaldo todavía")
-                }
-            }
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            Spacer()
-            let missingArt = monitor.missingArtworkCount
-            if missingArt > 0 || monitor.isWritingArtwork {
-                Button(monitor.isWritingArtwork ? "Poniendo portadas…" : "Portadas (\(missingArt))") {
-                    monitor.addMissingArtwork()
-                }
-                .controlSize(.small)
-                .disabled(monitor.isWritingArtwork)
-                .help("Poner en el iPod las portadas que faltan")
-            }
-            Button(backup.isRunning ? "Respaldando…" : "Respaldar…") { backup.showBackup() }
-                .controlSize(.small)
+            Text(storageText)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .monospacedDigit()
+            Spacer(minLength: 4)
+            if canBackup { backupButtons }
         }
         .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .background(.quaternary, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .frame(height: 28)
+        .background(.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+
+    private var canBackup: Bool {
+        !simulator.isSimulated && monitor.accessibleVolumeURL != nil && !monitor.tracks.isEmpty
+    }
+
+    private var storageText: String {
+        var text = "\(gb(simulator.freeGB, digits: 1)) GB libres"
+        guard !simulator.isSimulated else { return text }
+        if let id = monitor.device?.id, let date = backup.lastBackupDate(for: id) {
+            text += " · respaldo \(date.formatted(.relative(presentation: .named)))"
+        } else {
+            text += " · sin respaldo"
+        }
+        return text
+    }
+
+    @ViewBuilder
+    private var backupButtons: some View {
+        let missingArt = monitor.missingArtworkCount
+        if missingArt > 0 || monitor.isWritingArtwork {
+            Button(monitor.isWritingArtwork ? "Portadas…" : "Portadas (\(missingArt))") {
+                monitor.addMissingArtwork()
+            }
+            .buttonStyle(.borderless)
+            .font(.caption)
+            .disabled(monitor.isWritingArtwork)
+            .help("Poner en el iPod las portadas que faltan")
+        }
+        Button(backup.isRunning ? "Respaldando…" : "Respaldar…") { backup.showBackup() }
+            .buttonStyle(.borderless)
+            .font(.caption.weight(.semibold))
     }
 
     @ViewBuilder
     private var content: some View {
         if showsIPodMusic {
-            VStack(spacing: 8) {
-                if monitor.accessibleVolumeURL != nil, !monitor.tracks.isEmpty { backupBar }
-                IPodMusicView(monitor: monitor, library: library, scope: library.scope, query: library.query)
-            }
+            IPodMusicView(monitor: monitor, library: library, scope: library.scope, query: library.query)
         } else if visible.isEmpty {
             emptyState
         } else {
@@ -303,6 +374,14 @@ struct MacLibraryPanel: View {
     private var emptyState: some View {
         if !library.query.isEmpty {
             ContentUnavailableView.search(text: library.query)
+        } else if !isMac {
+            ContentUnavailableView {
+                Label(simulator.isConnected ? "Tu iPod está vacío" : "El iPod no está conectado", systemImage: "ipod")
+            } description: {
+                Text(simulator.isConnected ? "Envía canciones desde “En mi Mac”." : "Conéctalo para ver su música.")
+            } actions: {
+                if simulator.isConnected { Button("Ir a En mi Mac") { library.source = .mac } }
+            }
         } else if library.statusFilter != .all {
             ContentUnavailableView {
                 Label("Nada en “\(library.statusFilter.title)”", systemImage: "line.3.horizontal.decrease.circle")
@@ -375,8 +454,8 @@ struct MacLibraryPanel: View {
         .foregroundStyle(.secondary)
     }
 
-    private func gb(_ value: Double) -> String {
-        String(format: "%.2f", value).replacingOccurrences(of: ".", with: ",")
+    private func gb(_ value: Double, digits: Int = 2) -> String {
+        String(format: "%.\(digits)f", value).replacingOccurrences(of: ".", with: ",")
     }
 }
 
@@ -401,18 +480,23 @@ struct MacLibraryPanel: View {
 }
 
 /// 2 o 3 álbumes por fila (se recuerda; aplica a la Mac y al iPod).
+/// Un solo botón que alterna, para no amontonar la barra.
 struct AlbumColumnsPicker: View {
     @AppStorage(SettingsKey.albumColumns) private var columnCount = 2
 
     var body: some View {
-        Picker("Álbumes por fila", selection: $columnCount) {
-            Label("2 por fila", systemImage: "square.grid.2x2").tag(2)
-            Label("3 por fila", systemImage: "square.grid.3x3").tag(3)
+        Button {
+            withAnimation(.snappy(duration: 0.2)) { columnCount = columnCount == 2 ? 3 : 2 }
+        } label: {
+            Image(systemName: columnCount == 2 ? "square.grid.2x2" : "square.grid.3x3")
+                .font(.system(size: 13))
+                .contentTransition(.symbolEffect(.replace))
+                .frame(width: 28, height: 28)
+                .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+                .contentShape(Rectangle())
         }
-        .pickerStyle(.segmented)
-        .labelStyle(.iconOnly)
-        .labelsHidden()
-        .fixedSize()
-        .help("Álbumes por fila: 2 o 3")
+        .buttonStyle(.plain)
+        .accessibilityLabel(columnCount == 2 ? "2 álbumes por fila" : "3 álbumes por fila")
+        .help("Cambiar a \(columnCount == 2 ? 3 : 2) álbumes por fila")
     }
 }
