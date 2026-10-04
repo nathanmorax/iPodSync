@@ -14,13 +14,7 @@ struct LibraryCard<Content: View>: View {
 
     var body: some View {
         VStack(spacing: 0) { content }
-            .background(Theme.card)
-            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .strokeBorder(Theme.cardStroke, lineWidth: 0.5)
-            )
-            .shadow(color: .black.opacity(0.04), radius: 1, y: 1)
+            // Sin fondo propio: se ve el vidrio del panel, igual que la lista de "En el iPod".
     }
 }
 
@@ -57,24 +51,54 @@ struct ArtistsListView: View {
     let library: LibraryState
 
     private var groups: [(artist: String, songs: [Song])] {
-        Dictionary(grouping: songs, by: \.artist)
+        let q = library.query
+        let grouped = Dictionary(grouping: songs, by: \.artist)
             .map { (artist: $0.key, songs: $0.value.sorted { $0.title < $1.title }) }
-            .sorted { $0.artist.localizedCompare($1.artist) == .orderedAscending }
+        guard SearchMatch.isSearching(q) else {
+            return grouped.sorted { $0.artist.localizedCompare($1.artist) == .orderedAscending }
+        }
+        // Con búsqueda: primero el artista con la mejor coincidencia (p. ej. la canción que se llama así).
+        func rank(_ song: Song) -> SearchMatch { song.searchMatch(q) ?? SearchMatch.genre }
+        func best(_ songs: [Song]) -> SearchMatch { songs.map(rank).min() ?? SearchMatch.genre }
+
+        var result: [(artist: String, songs: [Song])] = []
+        for group in grouped {
+            let ordered = group.songs.sorted { rank($0) < rank($1) }
+            result.append((artist: group.artist, songs: ordered))
+        }
+        result.sort { a, b in
+            let rankA = best(a.songs), rankB = best(b.songs)
+            if rankA != rankB { return rankA < rankB }
+            return a.artist.localizedCompare(b.artist) == .orderedAscending
+        }
+        return result
     }
 
     var body: some View {
-        let order = groups.flatMap { $0.songs.map(\.id) }
+        let all = groups
+        let names = all.map(\.artist)
+        // Mientras buscas, todos los artistas se ven abiertos para que aparezcan los resultados.
+        let searching = !library.query.trimmingCharacters(in: .whitespaces).isEmpty
+        let order = all.filter { searching || !library.collapsedArtists.contains($0.artist) }.flatMap { $0.songs.map(\.id) }
         LibraryCard {
-            ForEach(Array(groups.enumerated()), id: \.element.artist) { index, group in
+            ForEach(Array(all.enumerated()), id: \.element.artist) { index, group in
+                let expanded = searching || !library.collapsedArtists.contains(group.artist)
                 if index > 0 { Divider() }
                 ArtistHeader(name: group.artist,
                              count: group.songs.count,
-                             hue: group.songs.first?.artworkHue ?? 0)
-                Divider()
-                ForEach(Array(group.songs.enumerated()), id: \.element.id) { i, song in
-                    if i > 0 { Divider().padding(.leading, 78) }
-                    SongRow(song: song, subtitle: [song.albumName, song.durationText ?? song.sizeText].compactMap { $0 }.joined(separator: " · "), indented: true,
-                            simulator: simulator, library: library, order: order)
+                             hue: group.songs.first?.artworkHue ?? 0,
+                             isExpanded: expanded) {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        library.toggleArtist(group.artist, in: \.collapsedArtists, all: names)
+                    }
+                }
+                if expanded {
+                    Divider()
+                    ForEach(Array(group.songs.enumerated()), id: \.element.id) { i, song in
+                        if i > 0 { Divider().padding(.leading, 78) }
+                        SongRow(song: song, subtitle: [song.albumName, song.durationText ?? song.sizeText].compactMap { $0 }.joined(separator: " · "), indented: true,
+                                simulator: simulator, library: library, order: order)
+                    }
                 }
             }
         }
@@ -85,9 +109,31 @@ struct ArtistHeader: View {
     let name: String
     let count: Int
     let hue: Double
+    var isExpanded = true
+    /// Si hay acción, el encabezado abre y cierra el artista (⌥ clic: todos).
+    var onToggle: (() -> Void)? = nil
 
     var body: some View {
+        if let onToggle {
+            Button(action: onToggle) { content.contentShape(Rectangle()) }
+                .buttonStyle(.plain)
+                .help(isExpanded ? "Cerrar (⌥ clic: cerrar todos)" : "Abrir (⌥ clic: abrir todos)")
+                .accessibilityValue(isExpanded ? "Abierto" : "Cerrado")
+        } else {
+            content
+        }
+    }
+
+    private var content: some View {
         HStack(spacing: 8) {
+            if onToggle != nil {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(.secondary)
+                    .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                    .frame(width: 10)
+                    .accessibilityHidden(true)
+            }
             Text(Song.initials(of: name))
                 .font(.system(size: 8, weight: .bold))
                 .foregroundStyle(.white)
@@ -103,7 +149,7 @@ struct ArtistHeader: View {
         }
         .padding(.horizontal, 12)
         .frame(height: 30)
-        .background(Theme.groupHeader)
+        .background(.thinMaterial)
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isHeader)
     }
@@ -114,15 +160,31 @@ struct ArtistHeader: View {
 struct AlbumsGridView: View {
     let songs: [Song]
     let simulator: IPodSimulator
+    var query: String = ""
     let onOpen: (Song) -> Void
 
-    private let columns = [GridItem(.adaptive(minimum: 118), spacing: 14)]
+    @AppStorage(SettingsKey.albumColumns) private var columnCount = 2
+
+    private var columns: [GridItem] {
+        Array(repeating: GridItem(.flexible(), spacing: 12, alignment: .top), count: max(2, min(3, columnCount)))
+    }
 
     /// Un cuadro por álbum (mismo álbum y artista), no uno por canción.
     private var albums: [(key: String, songs: [Song])] {
-        Dictionary(grouping: songs, by: \.albumKey)
+        let grouped = Dictionary(grouping: songs, by: \.albumKey)
             .map { (key: $0.key, songs: $0.value.sorted(by: Song.albumOrder)) }
-            .sorted { $0.songs[0].album.localizedCompare($1.songs[0].album) == .orderedAscending }
+        guard SearchMatch.isSearching(query) else {
+            return grouped.sorted { $0.songs[0].album.localizedCompare($1.songs[0].album) == .orderedAscending }
+        }
+        let q = query
+        func best(_ songs: [Song]) -> SearchMatch {
+            songs.map { $0.searchMatch(q) ?? SearchMatch.genre }.min() ?? SearchMatch.genre
+        }
+        return grouped.sorted { a, b in
+            let rankA = best(a.songs), rankB = best(b.songs)
+            if rankA != rankB { return rankA < rankB }
+            return a.songs[0].album.localizedCompare(b.songs[0].album) == .orderedAscending
+        }
     }
 
     var body: some View {
@@ -142,9 +204,11 @@ struct AlbumsGridView: View {
                                 .lineLimit(1)
                         }
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .help("\(cover.album) — \(cover.artist)")
                 .contextMenu {
                     let sendable = album.songs.filter(simulator.canSend).map(\.id)
                     Button(album.songs.count == 1 ? "Enviar al iPod" : "Enviar álbum al iPod (\(sendable.count))") {

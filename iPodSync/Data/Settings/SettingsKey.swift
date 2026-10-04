@@ -12,4 +12,5 @@ enum SettingsKey {
     static let lcdTint      = "lcdTint"        // "green" | "blue" | "amber"
     static let showKeyHints = "showKeyHints"   // Bool
     static let simulateIPod = "simulateIPod"   // Bool: usar el iPod de prueba en vez del real
+    static let albumColumns = "albumColumns"   // Int: 2 o 3 columnas en Álbumes
 }

@@ -40,6 +40,9 @@ struct TransparentWindow: NSViewRepresentable {
         window.backgroundColor = .clear
         window.hasShadow = false                 // cada panel tiene su propia sombra
         // Por si el estilo de la ventana todavía trae barra de título: que no dibuje nada.
+        // Ventana con estilo "titulado" (para que pueda ser la ventana activa y el buscador reciba
+        // texto) pero sin nada visible: contenido hasta arriba, barra transparente y sin botones.
+        window.styleMask.insert(.fullSizeContentView)
         window.titlebarAppearsTransparent = true
         window.titlebarSeparatorStyle = .none
         window.titleVisibility = .hidden

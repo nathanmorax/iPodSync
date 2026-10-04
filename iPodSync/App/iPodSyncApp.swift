@@ -28,9 +28,10 @@ struct iPodSyncApp: App {
                     appDelegate.monitor = monitor
                 }
         }
-        // Ventana sin marco ni barra de título (tipo emulador). Transparente gracias a
-        // .containerBackground(.clear, for: .window) en RootView; se arrastra desde la barra del simulador.
-        .windowStyle(.plain)
+        // Ventana transparente tipo emulador. Usa .hiddenTitleBar (no .plain) porque una ventana
+        // sin marco no puede ser la ventana activa y entonces el buscador no recibe lo que escribes.
+        // TransparentWindow quita el fondo, la barra y los botones; se arrastra desde la barra del simulador.
+        .windowStyle(.hiddenTitleBar)
         .defaultPosition(.center)
         .windowResizability(.contentSize)
         .commands {

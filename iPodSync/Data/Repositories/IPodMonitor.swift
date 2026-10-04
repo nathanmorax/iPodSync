@@ -159,19 +159,97 @@ final class IPodMonitor {
             fileExtension: song.fileFormat ?? source.pathExtension
         )
 
+        let artwork = song.artworkData
         let work = Task.detached(priority: .userInitiated) {
             let didAccess = source.startAccessingSecurityScopedResource()
             defer { if didAccess { source.stopAccessingSecurityScopedResource() } }
             let realSize = (try? source.resourceValues(forKeys: [.fileSizeKey]))?.fileSize.map(Int64.init)
             var exact = track
             if let realSize { exact.sizeBytes = realSize }
-            try IPodTrackWriter.add(source: source, track: exact, volume: volume, progress: progress)
+            let added = try IPodTrackWriter.add(source: source, track: exact, volume: volume, progress: progress)
+            // La portada es un extra: si falla, la canción ya quedó bien en el iPod.
+            if let artwork {
+                do {
+                    try IPodArtworkWriter.addArtwork(volume: volume, dbid: added.dbid, imageData: artwork)
+                } catch {
+                    print("No se pudo poner la portada de \(exact.title): \(error.localizedDescription)")
+                }
+            }
         }
         // Cancelar envíos (⌘.) o expulsar detiene la copia; la base del iPod no se toca a medias.
         try await withTaskCancellationHandler {
             _ = try await work.value
         } onCancel: {
             work.cancel()
+        }
+    }
+
+    // MARK: - Portadas que faltan
+
+    private(set) var isWritingArtwork = false
+
+    /// Canciones del iPod sin portada cuya portada sí tenemos en la biblioteca de la Mac.
+    private func missingArtworkJobs() -> [(dbid: UInt64, image: Data)] {
+        guard let simulator else { return [] }
+        var images: [String: Data] = [:]
+        for song in simulator.songs {
+            if let data = song.artworkData {
+                images[IPodSimulator.matchKey(title: song.title, artist: song.artist)] = data
+            }
+        }
+        return tracks.compactMap { track in
+            guard !track.hasArtwork, track.dbid != 0,
+                  let image = images[IPodSimulator.matchKey(title: track.title, artist: track.artist)] else { return nil }
+            return (dbid: track.dbid, image: image)
+        }
+    }
+
+    var missingArtworkCount: Int { missingArtworkJobs().count }
+
+    /// Portada de la misma canción en la biblioteca de la Mac (más nítida que la del iPod).
+    func macArtwork(for track: IPodTrack) -> Data? {
+        guard let simulator else { return nil }
+        let key = IPodSimulator.matchKey(title: track.title, artist: track.artist)
+        return simulator.songs.first {
+            $0.artworkData != nil && IPodSimulator.matchKey(title: $0.title, artist: $0.artist) == key
+        }?.artworkData
+    }
+
+    /// Pone en el iPod las portadas de las canciones que llegaron sin ella.
+    func addMissingArtwork() {
+        guard let volume = accessibleVolumeURL, let device else {
+            alertMessage = WriteToIPodError.noAccess.localizedDescription
+            return
+        }
+        guard hasBackup(for: device.id) else {
+            alertMessage = WriteToIPodError.needsBackup.localizedDescription
+            return
+        }
+        let jobs = missingArtworkJobs()
+        guard !jobs.isEmpty else {
+            alertMessage = "No hay canciones del iPod sin portada que tengan portada en tu biblioteca."
+            return
+        }
+        isWritingArtwork = true
+        Task {
+            let (added, failed): (Int, Int) = await Task.detached(priority: .userInitiated) {
+                var ok = 0, bad = 0
+                for job in jobs {
+                    do {
+                        try IPodArtworkWriter.addArtwork(volume: volume, dbid: job.dbid, imageData: job.image)
+                        ok += 1
+                    } catch {
+                        print("Portada: \(error.localizedDescription)")
+                        bad += 1
+                    }
+                }
+                return (ok, bad)
+            }.value
+            isWritingArtwork = false
+            reloadTracks()
+            alertMessage = failed == 0
+                ? "Se agregaron \(added) portadas. Expulsa el iPod para verlas en él."
+                : "Se agregaron \(added) portadas; \(failed) no se pudieron agregar."
         }
     }
 

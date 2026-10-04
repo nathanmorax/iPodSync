@@ -81,6 +81,8 @@ struct IPodSyncCommands: Commands {
                 Button("Restaurar desde un respaldo…") { backup.showRestore() }
                     .disabled(monitor.accessibleVolumeURL == nil)
                 Divider()
+                Button("Agregar portadas que faltan al iPod") { monitor.addMissingArtwork() }
+                    .disabled(monitor.accessibleVolumeURL == nil || monitor.isWritingArtwork)
                 Button("Volver a leer la música del iPod") { monitor.reloadTracks() }
                     .keyboardShortcut("r", modifiers: [.command, .shift])
                     .disabled(monitor.device == nil || !monitor.hasAccess || monitor.isLoadingTracks)

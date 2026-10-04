@@ -11,17 +11,30 @@ import AppKit
 
 struct IPodMusicView: View {
     let monitor: IPodMonitor
+    let library: LibraryState
     let scope: LibraryScope
     let query: String
 
+    @AppStorage(SettingsKey.albumColumns) private var columnCount = 2
+
     private var filtered: [IPodTrack] {
-        let q = query.trimmingCharacters(in: .whitespaces)
-        guard !q.isEmpty else { return monitor.tracks }
-        return monitor.tracks.filter {
-            $0.title.localizedCaseInsensitiveContains(q)
-                || $0.artist.localizedCaseInsensitiveContains(q)
-                || $0.album.localizedCaseInsensitiveContains(q)
+        guard isSearching else { return monitor.tracks }
+        // Con búsqueda: solo lo que coincide, y primero lo que mejor coincide.
+        var ranked: [(track: IPodTrack, rank: SearchMatch)] = []
+        for track in monitor.tracks {
+            if let rank = track.searchMatch(query) { ranked.append((track: track, rank: rank)) }
         }
+        ranked.sort { a, b in
+            if a.rank != b.rank { return a.rank < b.rank }
+            return a.track.title.localizedCompare(b.track.title) == .orderedAscending
+        }
+        return ranked.map { $0.track }
+    }
+
+    private var isSearching: Bool { SearchMatch.isSearching(query) }
+
+    private func bestMatch(_ tracks: [IPodTrack]) -> SearchMatch {
+        tracks.compactMap { $0.searchMatch(query) }.min() ?? .genre
     }
 
     var body: some View {
@@ -59,8 +72,115 @@ struct IPodMusicView: View {
                                    description: Text("Envía canciones desde “Todas” o “Sin enviar”."))
         } else if filtered.isEmpty {
             ContentUnavailableView.search(text: query)
+        } else if scope == .albums {
+            if let key = library.openIPodAlbum, let album = albums.first(where: { $0.key == key }) {
+                albumDetail(album)
+                    .transition(.move(edge: .trailing).combined(with: .opacity))
+            } else {
+                albumsGrid
+                    .transition(.opacity)
+            }
         } else {
             list
+        }
+    }
+
+    // MARK: Álbumes (cuadrícula de 2 o 3)
+
+    private typealias Album = (key: String, title: String, artist: String, tracks: [IPodTrack])
+
+    private var albums: [Album] {
+        Dictionary(grouping: filtered) { "\($0.artist)|\($0.album)" }
+            .map { key, tracks in
+                let sorted = tracks.sorted { ($0.trackNumber, $0.title) < ($1.trackNumber, $1.title) }
+                let first = sorted[0]
+                return (key: key, title: first.album.isEmpty ? "Sin álbum" : first.album,
+                        artist: first.artist, tracks: sorted)
+            }
+            .sorted { a, b in
+                if isSearching {
+                    let rankA = bestMatch(a.tracks), rankB = bestMatch(b.tracks)
+                    if rankA != rankB { return rankA < rankB }
+                }
+                return a.title.localizedCompare(b.title) == .orderedAscending
+            }
+    }
+
+    private var albumsGrid: some View {
+        let columns = Array(repeating: GridItem(.flexible(), spacing: 12, alignment: .top),
+                            count: max(2, min(3, columnCount)))
+        return ScrollView {
+            LazyVGrid(columns: columns, alignment: .leading, spacing: 16) {
+                ForEach(albums, id: \.key) { album in
+                    let cover = album.tracks.first(where: \.hasArtwork) ?? album.tracks[0]
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.25)) { library.openIPodAlbum = album.key }
+                    } label: {
+                        VStack(alignment: .leading, spacing: 5) {
+                            IPodArtworkView(track: cover, artwork: monitor.artwork, size: nil,
+                                            macArtwork: monitor.macArtwork(for: cover))
+                            Text(album.title)
+                                .font(.system(size: columnCount >= 3 ? 11 : 12, weight: .semibold))
+                                .lineLimit(1)
+                            Text(album.tracks.count == 1 ? album.artist : "\(album.artist) · \(album.tracks.count)")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .help("\(album.title) — \(album.artist)")
+                    .accessibilityLabel("\(album.title), \(album.artist), \(album.tracks.count) canciones")
+                    .accessibilityHint("Abre el álbum")
+                }
+            }
+            .padding(.horizontal, 2)
+        }
+    }
+
+    private func albumDetail(_ album: Album) -> some View {
+        let cover = album.tracks.first(where: \.hasArtwork) ?? album.tracks[0]
+        let minutes = album.tracks.map(\.durationMs).reduce(0, +) / 60_000
+        let year = album.tracks.first(where: { $0.year > 0 })?.year
+        return ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.25)) { library.openIPodAlbum = nil }
+                } label: {
+                    Label("Álbumes", systemImage: "chevron.left")
+                }
+                .buttonStyle(.borderless)
+                .keyboardShortcut("[", modifiers: .command)
+                .help("Volver a Álbumes (⌘[)")
+
+                HStack(alignment: .bottom, spacing: 14) {
+                    IPodArtworkView(track: cover, artwork: monitor.artwork, size: 110,
+                                    macArtwork: monitor.macArtwork(for: cover))
+                        .shadow(color: .black.opacity(0.25), radius: 9, y: 6)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(album.title)
+                            .font(.title3.weight(.bold))
+                            .lineLimit(2)
+                        Text([album.artist,
+                              year.map(String.init),
+                              album.tracks.count == 1 ? "1 canción" : "\(album.tracks.count) canciones",
+                              minutes > 0 ? "\(minutes) min" : nil].compactMap { $0 }.joined(separator: " · "))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                VStack(spacing: 0) {
+                    ForEach(Array(album.tracks.enumerated()), id: \.element.id) { index, track in
+                        if index > 0 { Divider().padding(.leading, 52) }
+                        IPodTrackRow(track: track,
+                                     subtitle: "\(track.trackNumber > 0 ? track.trackNumber : index + 1) · \(track.artist)",
+                                     artwork: monitor.artwork)
+                    }
+                }
+            }
         }
     }
 
@@ -69,9 +189,14 @@ struct IPodMusicView: View {
     private var sections: [(key: String, tracks: [IPodTrack])] {
         switch scope {
         case .songs:
+            if isSearching {
+                // Resultados: "Canciones" (por nombre), luego "Por artista", "Por álbum", "Por género".
+                return group(filtered) { ($0.searchMatch(query) ?? .genre).sectionTitle }
+            }
             return group(filtered) { IndexedSongsList.letter(for: $0.title) }
         case .artists:
-            return group(filtered.sorted { ($0.artist, $0.album, $0.trackNumber) < ($1.artist, $1.album, $1.trackNumber) }) { $0.artist }
+            return group(isSearching ? filtered
+                         : filtered.sorted { ($0.artist, $0.album, $0.trackNumber) < ($1.artist, $1.album, $1.trackNumber) }) { $0.artist }
         case .albums:
             return group(filtered.sorted { ($0.album, $0.trackNumber, $0.title) < ($1.album, $1.trackNumber, $1.title) }) {
                 $0.album.isEmpty ? "Sin álbum" : $0.album
@@ -92,7 +217,16 @@ struct IPodMusicView: View {
             }
         }
         if scope != .songs {
-            result.sort { $0.key.localizedCompare($1.key) == .orderedAscending }
+            if isSearching {
+                // El artista/álbum con la mejor coincidencia primero.
+                result.sort { a, b in
+                    let rankA = bestMatch(a.tracks), rankB = bestMatch(b.tracks)
+                    if rankA != rankB { return rankA < rankB }
+                    return a.key.localizedCompare(b.key) == .orderedAscending
+                }
+            } else {
+                result.sort { $0.key.localizedCompare($1.key) == .orderedAscending }
+            }
         }
         return result
     }
@@ -104,20 +238,26 @@ struct IPodMusicView: View {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
                         ForEach(groups, id: \.key) { group in
+                            // Mientras buscas, todos los artistas se ven abiertos.
+                            let collapsed = scope == .artists && query.trimmingCharacters(in: .whitespaces).isEmpty
+                                && library.collapsedIPodArtists.contains(group.key)
                             Section {
-                                ForEach(group.tracks) { track in
-                                    IPodTrackRow(track: track, subtitle: subtitle(for: track), artwork: monitor.artwork)
-                                    Divider().padding(.leading, 52)
+                                if !collapsed {
+                                    ForEach(group.tracks) { track in
+                                        IPodTrackRow(track: track, subtitle: subtitle(for: track), artwork: monitor.artwork)
+                                        Divider().padding(.leading, 52)
+                                    }
                                 }
                             } header: {
-                                header(group.key, count: group.tracks.count)
+                                header(group.key, count: group.tracks.count,
+                                       expanded: !collapsed, allKeys: groups.map(\.key))
                                     .id(group.key)
                             }
                         }
                     }
                 }
 
-                if scope == .songs {
+                if scope == .songs && !isSearching {
                     AlphabetIndex(available: Set(groups.map(\.key))) { letter in
                         withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(letter, anchor: .top) }
                     }
@@ -134,8 +274,35 @@ struct IPodMusicView: View {
         }
     }
 
-    private func header(_ title: String, count: Int) -> some View {
+    @ViewBuilder
+    private func header(_ title: String, count: Int, expanded: Bool, allKeys: [String]) -> some View {
+        if scope == .artists {
+            Button {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    library.toggleArtist(title, in: \.collapsedIPodArtists, all: allKeys)
+                }
+            } label: {
+                headerContent(title, count: count, expanded: expanded)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help(expanded ? "Cerrar (⌥ clic: cerrar todos)" : "Abrir (⌥ clic: abrir todos)")
+            .accessibilityValue(expanded ? "Abierto" : "Cerrado")
+        } else {
+            headerContent(title, count: count, expanded: true)
+        }
+    }
+
+    private func headerContent(_ title: String, count: Int, expanded: Bool) -> some View {
         HStack {
+            if scope == .artists {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(.secondary)
+                    .rotationEffect(.degrees(expanded ? 90 : 0))
+                    .frame(width: 10)
+                    .accessibilityHidden(true)
+            }
             Text(title)
                 .font(.system(size: scope == .songs ? 11 : 12, weight: .bold))
                 .foregroundStyle(scope == .songs ? AnyShapeStyle(TintShapeStyle.tint) : AnyShapeStyle(HierarchicalShapeStyle.primary))
@@ -206,39 +373,56 @@ struct IPodTrackRow: View {
 struct IPodArtworkView: View {
     let track: IPodTrack
     let artwork: IPodArtworkStore?
-    var size: CGFloat = 30
+    /// nil = cuadrada y del ancho disponible (cuadrícula de álbumes).
+    var size: CGFloat? = 30
+    /// Portada de la misma canción en tu Mac (más nítida que la del iPod, que es de 200×200 como máximo).
+    var macArtwork: Data? = nil
 
     @State private var image: CGImage?
 
+    private var corner: CGFloat { (size ?? 48) * 0.17 }
+    /// Píxeles que necesitamos (pantalla Retina = ×2).
+    private var neededPixels: Int { Int((size ?? 200) * 2) }
+
     var body: some View {
-        ZStack {
-            if let image {
-                Image(decorative: image, scale: 1)
-                    .resizable()
-                    .interpolation(.high)
-                    .aspectRatio(contentMode: .fill)
-                    .transition(.opacity)
-            } else {
-                LinearGradient(colors: [Color(hue: track.artworkHue, saturation: 0.40, brightness: 0.86),
-                                        Color(hue: track.artworkHue, saturation: 0.62, brightness: 0.64)],
-                               startPoint: .topLeading, endPoint: .bottomTrailing)
-                Image(systemName: "music.note")
-                    .font(.system(size: size * 0.37, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.8))
+        // El cuadro mide lo que le toca y la imagen se recorta adentro: no desborda la celda.
+        Color.clear
+            .frame(width: size, height: size)
+            .aspectRatio(1, contentMode: .fit)
+            .overlay {
+                if let data = macArtwork, let mac = NSImage(data: data) {
+                    Image(nsImage: mac)
+                        .resizable()
+                        .interpolation(.high)
+                        .scaledToFill()
+                } else if let image {
+                    Image(decorative: image, scale: 1)
+                        .resizable()
+                        .interpolation(.high)
+                        .scaledToFill()
+                        .transition(.opacity)
+                } else {
+                    ZStack {
+                        LinearGradient(colors: [Color(hue: track.artworkHue, saturation: 0.40, brightness: 0.86),
+                                                Color(hue: track.artworkHue, saturation: 0.62, brightness: 0.64)],
+                                       startPoint: .topLeading, endPoint: .bottomTrailing)
+                        Image(systemName: "music.note")
+                            .font(.system(size: (size ?? 60) * 0.37, weight: .semibold))
+                            .foregroundStyle(.white.opacity(0.8))
+                    }
+                }
             }
-        }
-        .frame(width: size, height: size)
-        .clipShape(RoundedRectangle(cornerRadius: size * 0.17, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: size * 0.17, style: .continuous)
-                .strokeBorder(.black.opacity(0.10), lineWidth: 0.5)
-        )
-        .accessibilityHidden(true)
-        .task(id: track.dbid) {
-            guard let artwork else { return }
-            let loaded = await artwork.image(for: track.dbid)
-            withAnimation(.easeOut(duration: 0.15)) { image = loaded }
-        }
+            .clipShape(RoundedRectangle(cornerRadius: corner, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: corner, style: .continuous)
+                    .strokeBorder(.black.opacity(0.10), lineWidth: 0.5)
+            )
+            .accessibilityHidden(true)
+            .task(id: "\(track.dbid)-\(neededPixels)") {
+                guard macArtwork == nil, let artwork else { return }
+                let loaded = await artwork.image(for: track.dbid, minPixels: neededPixels)
+                withAnimation(.easeOut(duration: 0.15)) { image = loaded }
+            }
     }
 }
 

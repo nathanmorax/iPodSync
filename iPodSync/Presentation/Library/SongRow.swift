@@ -176,20 +176,23 @@ struct SongArtworkView: View {
     var cornerRadius: CGFloat = 5
 
     var body: some View {
-        Group {
-            if let data = song.artworkData, let image = NSImage(data: data) {
-                Image(nsImage: image)
-                    .resizable()
-                    .interpolation(.high)
-                    .aspectRatio(contentMode: .fill)
-            } else {
-                Rectangle().fill(song.artworkGradient)
+        // Un cuadro que mide lo que le toca (o `size`) y la imagen se recorta adentro:
+        // así una portada que no es cuadrada no empuja ni desborda la celda.
+        Color.clear
+            .frame(width: size, height: size)
+            .aspectRatio(1, contentMode: .fit)
+            .overlay {
+                if let data = song.artworkData, let image = NSImage(data: data) {
+                    Image(nsImage: image)
+                        .resizable()
+                        .interpolation(.high)
+                        .scaledToFill()
+                } else {
+                    Rectangle().fill(song.artworkGradient)
+                }
             }
-        }
-        .frame(width: size, height: size)
-        .aspectRatio(1, contentMode: .fit)
-        .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
-        .accessibilityHidden(true)
+            .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            .accessibilityHidden(true)
     }
 }
 

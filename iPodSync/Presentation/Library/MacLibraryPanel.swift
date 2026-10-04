@@ -95,6 +95,9 @@ struct MacLibraryPanel: View {
                     .contentTransition(.numericText())
             }
             Spacer(minLength: 8)
+            if library.scope == .albums {
+                AlbumColumnsPicker()
+            }
             Picker("Ver por", selection: $library.scope) {
                 ForEach(LibraryScope.allCases) { scope in
                     Label(scope.title, systemImage: scope.systemImage).tag(scope)
@@ -245,6 +248,15 @@ struct MacLibraryPanel: View {
             .font(.caption)
             .foregroundStyle(.secondary)
             Spacer()
+            let missingArt = monitor.missingArtworkCount
+            if missingArt > 0 || monitor.isWritingArtwork {
+                Button(monitor.isWritingArtwork ? "Poniendo portadas…" : "Portadas (\(missingArt))") {
+                    monitor.addMissingArtwork()
+                }
+                .controlSize(.small)
+                .disabled(monitor.isWritingArtwork)
+                .help("Poner en el iPod las portadas que faltan")
+            }
             Button(backup.isRunning ? "Respaldando…" : "Respaldar…") { backup.showBackup() }
                 .controlSize(.small)
         }
@@ -258,7 +270,7 @@ struct MacLibraryPanel: View {
         if showsIPodMusic {
             VStack(spacing: 8) {
                 if monitor.accessibleVolumeURL != nil, !monitor.tracks.isEmpty { backupBar }
-                IPodMusicView(monitor: monitor, scope: library.scope, query: library.query)
+                IPodMusicView(monitor: monitor, library: library, scope: library.scope, query: library.query)
             }
         } else if visible.isEmpty {
             emptyState
@@ -278,7 +290,7 @@ struct MacLibraryPanel: View {
                             library.selectedAlbumID = nil
                         }
                     } else {
-                        AlbumsGridView(songs: visible, simulator: simulator) { song in
+                        AlbumsGridView(songs: visible, simulator: simulator, query: library.query) { song in
                             library.selectedAlbumID = song.id
                         }
                     }
@@ -386,4 +398,21 @@ struct MacLibraryPanel: View {
         .frame(width: 384, height: 640)
         .padding(30)
         .background(Wallpaper())
+}
+
+/// 2 o 3 álbumes por fila (se recuerda; aplica a la Mac y al iPod).
+struct AlbumColumnsPicker: View {
+    @AppStorage(SettingsKey.albumColumns) private var columnCount = 2
+
+    var body: some View {
+        Picker("Álbumes por fila", selection: $columnCount) {
+            Label("2 por fila", systemImage: "square.grid.2x2").tag(2)
+            Label("3 por fila", systemImage: "square.grid.3x3").tag(3)
+        }
+        .pickerStyle(.segmented)
+        .labelStyle(.iconOnly)
+        .labelsHidden()
+        .fixedSize()
+        .help("Álbumes por fila: 2 o 3")
+    }
 }

@@ -17,6 +17,7 @@ final class LibraryState {
     var scope: LibraryScope {
         didSet {
             selectedAlbumID = nil
+            openIPodAlbum = nil
             UserDefaults.standard.set(scope.rawValue, forKey: Self.scopeKey)
         }
     }
@@ -26,6 +27,11 @@ final class LibraryState {
     /// Se incrementa con ⌘F para pedir el foco del buscador del panel.
     var searchFocusRequest = 0
     var selectedAlbumID: Song.ID?
+    /// Álbum abierto en "En el iPod" (clave artista|álbum).
+    var openIPodAlbum: String?
+    /// Artistas cerrados en la vista Artistas (Mac y iPod por separado).
+    var collapsedArtists: Set<String> = []
+    var collapsedIPodArtists: Set<String> = []
     var isImporting = false
 
     /// Canciones seleccionadas con clic, ⌘‑clic o ⇧‑clic.
@@ -37,12 +43,24 @@ final class LibraryState {
         scope = saved.flatMap(LibraryScope.init(rawValue:)) ?? .artists
     }
 
-    func filter(_ songs: [Song]) -> [Song] {
-        let q = query.trimmingCharacters(in: .whitespaces)
-        guard !q.isEmpty else { return songs }
-        return songs.filter {
-            $0.title.localizedCaseInsensitiveContains(q) || $0.artist.localizedCaseInsensitiveContains(q)
+    /// Abre o cierra un artista. Con ⌥ (Opción) abre o cierra todos, como en el Finder.
+    func toggleArtist(_ name: String,
+                      in keyPath: ReferenceWritableKeyPath<LibraryState, Set<String>>,
+                      all names: [String]) {
+        let collapse = !self[keyPath: keyPath].contains(name)
+        if NSEvent.modifierFlags.contains(.option) {
+            self[keyPath: keyPath] = collapse ? Set(names) : []
+        } else if collapse {
+            self[keyPath: keyPath].insert(name)
+        } else {
+            self[keyPath: keyPath].remove(name)
         }
+    }
+
+    func filter(_ songs: [Song]) -> [Song] {
+        guard SearchMatch.isSearching(query) else { return songs }
+        // Busca en título, artista, álbum y género (sin importar mayúsculas ni acentos).
+        return songs.filter { $0.searchMatch(query) != nil }
     }
 
     /// Selección como en el Finder: clic = una, ⌘‑clic = agregar/quitar, ⇧‑clic = rango.

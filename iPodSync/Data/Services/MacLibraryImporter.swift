@@ -141,8 +141,8 @@ nonisolated enum MacLibraryImporter {
 
     // MARK: - Portada
 
-    /// Portada reducida a JPEG de ~300 px para mostrar en la biblioteca.
-    static func thumbnail(_ data: Data, maxPixel: Int = 300) -> Data? {
+    /// Portada reducida a JPEG de ~600 px (nítida en la cuadrícula de 2 columnas en pantallas Retina).
+    static func thumbnail(_ data: Data, maxPixel: Int = 600) -> Data? {
         guard let source = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
         let options: [CFString: Any] = [
             kCGImageSourceCreateThumbnailFromImageAlways: true,

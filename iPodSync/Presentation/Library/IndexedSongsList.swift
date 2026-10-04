@@ -13,11 +13,42 @@ struct IndexedSongsList: View {
     let simulator: IPodSimulator
     let library: LibraryState
 
+    private var isSearching: Bool { SearchMatch.isSearching(library.query) }
+
+    /// Sin búsqueda: por título. Con búsqueda: primero lo que mejor coincide.
     private var sorted: [Song] {
-        songs.sorted { $0.title.localizedCompare($1.title) == .orderedAscending }
+        guard isSearching else {
+            return songs.sorted { $0.title.localizedCompare($1.title) == .orderedAscending }
+        }
+        let q = library.query
+        let ranked: [(song: Song, rank: SearchMatch)] = songs.map { song in
+            (song: song, rank: song.searchMatch(q) ?? SearchMatch.genre)
+        }
+        let ordered = ranked.sorted(by: Self.rankedOrder)
+        return ordered.map { $0.song }
+    }
+
+    /// Mejor coincidencia primero; si empatan, por título.
+    private static func rankedOrder(_ a: (song: Song, rank: SearchMatch),
+                                    _ b: (song: Song, rank: SearchMatch)) -> Bool {
+        if a.rank != b.rank { return a.rank < b.rank }
+        return a.song.title.localizedCompare(b.song.title) == .orderedAscending
     }
 
     private var sections: [(letter: String, songs: [Song])] {
+        if isSearching {
+            // Resultados: "Canciones" (por nombre), luego "Por artista", "Por álbum", "Por género".
+            var result: [(letter: String, songs: [Song])] = []
+            for song in sorted {
+                let title = (song.searchMatch(library.query) ?? .genre).sectionTitle
+                if result.last?.letter == title {
+                    result[result.count - 1].songs.append(song)
+                } else {
+                    result.append((letter: title, songs: [song]))
+                }
+            }
+            return result
+        }
         var result: [(letter: String, songs: [Song])] = []
         for song in sorted {
             let letter = Self.letter(for: song.title)
@@ -72,9 +103,11 @@ struct IndexedSongsList: View {
                     }
                 }
 
-                AlphabetIndex(available: Set(groups.map(\.letter))) { letter in
-                    withAnimation(.easeOut(duration: 0.2)) {
-                        proxy.scrollTo(letter, anchor: .top)
+                if !isSearching {
+                    AlphabetIndex(available: Set(groups.map(\.letter))) { letter in
+                        withAnimation(.easeOut(duration: 0.2)) {
+                            proxy.scrollTo(letter, anchor: .top)
+                        }
                     }
                 }
             }

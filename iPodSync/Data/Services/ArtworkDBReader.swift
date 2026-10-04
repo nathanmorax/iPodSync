@@ -31,12 +31,17 @@ nonisolated enum ArtworkDBReader {
 
     /// Índice dbid de la canción → mejor miniatura disponible.
     static func readIndex(volume: URL) throws -> [UInt64: Thumbnail] {
+        try readAllSizes(volume: volume).compactMapValues { pick($0) }
+    }
+
+    /// Índice dbid de la canción → todos los tamaños guardados de su portada (100×100, 200×200…).
+    static func readAllSizes(volume: URL) throws -> [UInt64: [Thumbnail]] {
         let url = volume.appendingPathComponent("iPod_Control/Artwork/ArtworkDB")
         guard FileManager.default.fileExists(atPath: url.path) else { return [:] }
         let db = try Data(contentsOf: url, options: .alwaysMapped)
         guard tag(db, 0) == "mhfd" else { return [:] }
 
-        var index: [UInt64: Thumbnail] = [:]
+        var index: [UInt64: [Thumbnail]] = [:]
         let sectionCount = Int(u32(db, 0x14))
         var offset = Int(u32(db, 4))
         for _ in 0..<max(sectionCount, 1) {
@@ -51,7 +56,7 @@ nonisolated enum ArtworkDBReader {
         return index
     }
 
-    private static func readImages(_ db: Data, section: Int, into index: inout [UInt64: Thumbnail]) {
+    private static func readImages(_ db: Data, section: Int, into index: inout [UInt64: [Thumbnail]]) {
         let list = section + Int(u32(db, section + 4))          // mhli
         guard tag(db, list) == "mhli" else { return }
         let count = Int(u32(db, list + 8))
@@ -62,7 +67,8 @@ nonisolated enum ArtworkDBReader {
             guard total > 0 else { return }
             let songID = UInt64(u32(db, offset + 0x14)) | UInt64(u32(db, offset + 0x18)) << 32
             let thumbs = thumbnails(db, image: offset)
-            if songID != 0, let best = pick(thumbs) { index[songID] = best }
+            let usable = thumbs.filter { $0.size > 0 && $0.width > 0 && $0.height > 0 }
+            if songID != 0, !usable.isEmpty { index[songID] = usable }
             offset += total
         }
     }
@@ -113,10 +119,10 @@ nonisolated enum ArtworkDBReader {
         return text?.split(separator: ":").last.map(String.init)
     }
 
-    /// La más chica que todavía se vea nítida; si ninguna llega, la más grande.
-    private static func pick(_ thumbs: [Thumbnail]) -> Thumbnail? {
+    /// La más chica que todavía se vea nítida a `minWidth` píxeles; si ninguna llega, la más grande.
+    static func pick(_ thumbs: [Thumbnail], minWidth: Int = preferredMinWidth) -> Thumbnail? {
         let usable = thumbs.filter { $0.size > 0 && $0.width > 0 && $0.height > 0 }
-        return usable.filter { $0.width >= preferredMinWidth }.min { $0.width < $1.width }
+        return usable.filter { $0.width >= minWidth }.min { $0.width < $1.width }
             ?? usable.max { $0.width < $1.width }
     }
 

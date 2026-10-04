@@ -34,8 +34,8 @@ enum IPodInfoReader {
     // MARK: - SysInfo
 
     private static func readSysInfo(_ url: URL) -> [String: String] {
-        guard let text = try? String(contentsOf: url, encoding: .utf8)
-                ?? String(contentsOf: url, encoding: .isoLatin1) else { return [:] }
+        guard let text = (try? String(contentsOf: url, encoding: .utf8))
+                ?? (try? String(contentsOf: url, encoding: .isoLatin1)) else { return [:] }
         var result: [String: String] = [:]
         for line in text.split(whereSeparator: \.isNewline) {
             guard let colon = line.firstIndex(of: ":") else { continue }
