@@ -13,6 +13,7 @@ struct MacLibraryPanel: View {
     let simulator: IPodSimulator
     let monitor: IPodMonitor
 
+    @Environment(BackupViewModel.self) private var backup
     @FocusState private var searchFocused: Bool
     @State private var isFileDropTarget = false
 
@@ -67,7 +68,9 @@ struct MacLibraryPanel: View {
             let audio = urls.filter { url in
                 url.isFileURL && (UTType(filenameExtension: url.pathExtension)?.conforms(to: .audio) ?? false)
             }
-            return !simulator.addSongs(from: audio).isEmpty
+            guard !audio.isEmpty else { return false }
+            Task { await simulator.importFiles(audio) }
+            return true
         } isTargeted: { isFileDropTarget = $0 }
         .environment(\.colorScheme, .dark)
         .onChange(of: library.searchFocusRequest) { searchFocused = true }
@@ -83,7 +86,9 @@ struct MacLibraryPanel: View {
                 Text("En tu Mac")
                     .font(.title3.weight(.bold))
                     .accessibilityAddTraits(.isHeader)
-                Text("\(simulator.songs.count) canciones · \(simulator.onDeviceSongs.count) ya en el iPod")
+                Text(simulator.importingCount > 0
+                     ? "Agregando \(simulator.importingCount) \(simulator.importingCount == 1 ? "archivo" : "archivos")…"
+                     : "\(simulator.songs.count) canciones · \(simulator.onDeviceSongs.count) ya en el iPod")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .monospacedDigit()
@@ -224,10 +229,37 @@ struct MacLibraryPanel: View {
         !simulator.isSimulated && library.statusFilter == .onDevice
     }
 
+    /// Recordatorio de respaldo arriba de la música del iPod.
+    private var backupBar: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "externaldrive.badge.timemachine")
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
+            Group {
+                if let id = monitor.device?.id, let date = backup.lastBackupDate(for: id) {
+                    Text("Último respaldo: \(date.formatted(.relative(presentation: .named)))")
+                } else {
+                    Text("Sin respaldo todavía")
+                }
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            Spacer()
+            Button(backup.isRunning ? "Respaldando…" : "Respaldar…") { backup.showBackup() }
+                .controlSize(.small)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(.quaternary, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+
     @ViewBuilder
     private var content: some View {
         if showsIPodMusic {
-            IPodMusicView(monitor: monitor, scope: library.scope, query: library.query)
+            VStack(spacing: 8) {
+                if monitor.accessibleVolumeURL != nil, !monitor.tracks.isEmpty { backupBar }
+                IPodMusicView(monitor: monitor, scope: library.scope, query: library.query)
+            }
         } else if visible.isEmpty {
             emptyState
         } else {
@@ -340,6 +372,7 @@ struct MacLibraryPanel: View {
 
 #Preview("MacLibraryPanel · En tu Mac") {
     MacLibraryPanel(library: LibraryState(), simulator: IPodSimulator(), monitor: IPodMonitor())
+        .environment(BackupViewModel())
         .frame(width: 384, height: 640)
         .padding(30)
         .background(Wallpaper())
@@ -349,6 +382,7 @@ struct MacLibraryPanel: View {
     let sim = IPodSimulator()
     sim.eject()
     return MacLibraryPanel(library: LibraryState(), simulator: sim, monitor: IPodMonitor())
+        .environment(BackupViewModel())
         .frame(width: 384, height: 640)
         .padding(30)
         .background(Wallpaper())

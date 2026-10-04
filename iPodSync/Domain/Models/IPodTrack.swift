@@ -10,6 +10,10 @@ import Foundation
 nonisolated struct IPodTrack: Identifiable, Hashable, Sendable {
     /// ID interno del iPod (único dentro de su iTunesDB).
     let id: UInt32
+    /// ID de 64 bits de la canción; une la canción con su portada en ArtworkDB.
+    var dbid: UInt64 = 0
+    /// El iPod dice que esta canción tiene portada.
+    var hasArtwork = false
     let title: String
     let artist: String
     let album: String

@@ -13,6 +13,7 @@ struct IPodSyncCommands: Commands {
     let simulator: IPodSimulator
     let library: LibraryState
     let monitor: IPodMonitor
+    let backup: BackupViewModel
 
     var body: some Commands {
         // Archivo
@@ -74,6 +75,12 @@ struct IPodSyncCommands: Commands {
             } else {
                 // Por si el iPod no se detecta solo: elegirlo a mano también lo registra.
                 Button(monitor.hasAccess ? "Cambiar acceso al iPod…" : "Elegir iPod y dar acceso…") { monitor.requestAccess() }
+                Divider()
+                Button("Respaldar la música del iPod…") { backup.showBackup() }
+                    .disabled(monitor.accessibleVolumeURL == nil)
+                Button("Restaurar desde un respaldo…") { backup.showRestore() }
+                    .disabled(monitor.accessibleVolumeURL == nil)
+                Divider()
                 Button("Volver a leer la música del iPod") { monitor.reloadTracks() }
                     .keyboardShortcut("r", modifiers: [.command, .shift])
                     .disabled(monitor.device == nil || !monitor.hasAccess || monitor.isLoadingTracks)

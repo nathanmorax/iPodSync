@@ -24,6 +24,8 @@ final class IPodMonitor {
     /// Canciones leídas del iPod (iTunesDB).
     private(set) var tracks: [IPodTrack] = []
     private(set) var isLoadingTracks = false
+    /// Portadas del iPod (ArtworkDB + .ithmb); se crea al leer la música.
+    private(set) var artwork: IPodArtworkStore?
     /// Por qué no se pudo leer la música (nil si todo bien).
     private(set) var tracksError: String?
     /// Mensaje para mostrar en una alerta (no se pudo expulsar, elegiste otra carpeta…).
@@ -44,6 +46,12 @@ final class IPodMonitor {
 
     func start(simulator: IPodSimulator) {
         self.simulator = simulator
+        // Con el iPod real, "Enviar" copia de verdad (ver writeToIPod).
+        simulator.realSender = { [weak self] song, progress in
+            guard let self else { throw CancellationError() }
+            try await self.writeToIPod(song, progress: progress)
+        }
+        simulator.onRealQueueFinished = { [weak self] in self?.reloadTracks() }
         guard observers.isEmpty else { rescan(); return }
 
         let center = NSWorkspace.shared.notificationCenter
@@ -88,6 +96,85 @@ final class IPodMonitor {
         }
     }
 
+    /// Raíz del iPod con permiso de acceso (nil si no hay iPod o falta el permiso).
+    var accessibleVolumeURL: URL? {
+        hasAccess ? (accessedURL ?? device?.volumeURL) : nil
+    }
+
+    // MARK: - Escribir en el iPod
+
+    enum WriteToIPodError: LocalizedError {
+        case noAccess
+        case needsBackup
+        case classicNotSupported
+        case fileMissing(String)
+
+        var errorDescription: String? {
+            switch self {
+            case .noAccess:
+                return "Conecta el iPod y dale acceso antes de enviar."
+            case .needsBackup:
+                return "Antes de copiar música, haz un respaldo del iPod (menú iPod › Respaldar la música del iPod…)."
+            case .classicNotSupported:
+                return "Los iPod classic necesitan una firma especial en su base de datos que todavía no soportamos. No se cambió nada."
+            case .fileMissing(let name):
+                return "No se encuentra el archivo de “\(name)” en tu Mac. ¿Lo moviste o lo borraste?"
+            }
+        }
+    }
+
+    /// ¿Hay un respaldo hecho con iPodSync para este iPod?
+    private func hasBackup(for deviceID: String) -> Bool {
+        let all = UserDefaults.standard.dictionary(forKey: "lastIPodBackups") as? [String: Date]
+        return all?[deviceID] != nil
+    }
+
+    /// Copia una canción al iPod real y la agrega a su base de datos.
+    func writeToIPod(_ song: Song, progress: @escaping @Sendable (Double) -> Void) async throws {
+        guard let volume = accessibleVolumeURL, let device else { throw WriteToIPodError.noAccess }
+        guard hasBackup(for: device.id) else { throw WriteToIPodError.needsBackup }
+        if let model = IPodInfoReader.read(volume: volume).modelName,
+           model.localizedCaseInsensitiveContains("classic") {
+            throw WriteToIPodError.classicNotSupported
+        }
+
+        // El permiso para leer el archivo vive en su bookmark.
+        var source = song.fileURL
+        if let bookmark = song.bookmark {
+            var stale = false
+            source = (try? URL(resolvingBookmarkData: bookmark, options: [.withSecurityScope],
+                               relativeTo: nil, bookmarkDataIsStale: &stale)) ?? source
+        }
+        guard let source else { throw WriteToIPodError.fileMissing(song.title) }
+
+        let track = IPodTrackWriter.NewTrack(
+            title: song.title,
+            artist: song.artist,
+            album: song.albumName,
+            genre: song.genre,
+            trackNumber: song.trackNumber,
+            year: song.year,
+            durationMs: Int((song.durationSeconds ?? 0) * 1000),
+            sizeBytes: Int64(song.sizeMB * 1_048_576),
+            fileExtension: song.fileFormat ?? source.pathExtension
+        )
+
+        let work = Task.detached(priority: .userInitiated) {
+            let didAccess = source.startAccessingSecurityScopedResource()
+            defer { if didAccess { source.stopAccessingSecurityScopedResource() } }
+            let realSize = (try? source.resourceValues(forKeys: [.fileSizeKey]))?.fileSize.map(Int64.init)
+            var exact = track
+            if let realSize { exact.sizeBytes = realSize }
+            try IPodTrackWriter.add(source: source, track: exact, volume: volume, progress: progress)
+        }
+        // Cancelar envíos (⌘.) o expulsar detiene la copia; la base del iPod no se toca a medias.
+        try await withTaskCancellationHandler {
+            _ = try await work.value
+        } onCancel: {
+            work.cancel()
+        }
+    }
+
     // MARK: - Música del iPod
 
     /// Vuelve a leer la base de datos del iPod (menú iPod › Volver a leer la música).
@@ -101,6 +188,7 @@ final class IPodMonitor {
         tracksDeviceID = deviceID
         isLoadingTracks = true
         tracksError = nil
+        artwork = IPodArtworkStore(volume: volume)
 
         tracksTask = Task {
             // Leer y descifrar el archivo fuera del hilo principal (puede tener miles de canciones).
@@ -125,6 +213,7 @@ final class IPodMonitor {
         tracksTask?.cancel()
         tracksDeviceID = nil
         tracks = []
+        artwork = nil
         isLoadingTracks = false
         tracksError = nil
         simulator?.setDeviceTracks([])

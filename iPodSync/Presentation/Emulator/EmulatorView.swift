@@ -48,6 +48,7 @@ struct EmulatorView: View {
 
 #Preview("EmulatorView · emulador (iPod + En tu Mac)") {
     EmulatorView(simulator: IPodSimulator(), library: LibraryState(), monitor: IPodMonitor())
+        .environment(BackupViewModel())
         .frame(width: 800, height: 760)
         .background(Wallpaper())
 }

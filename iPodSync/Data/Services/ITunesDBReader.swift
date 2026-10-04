@@ -87,6 +87,10 @@ nonisolated enum ITunesDBReader {
                 playCount: Int(u32(db, offset + 80)),
                 rating: Int(db.byte(at: offset + 31)) / 20
             ))
+            // Enlace con la portada: dbid (0x70, 64 bits) y cuántas portadas tiene (0x7C) / su tamaño (0x80).
+            result[result.count - 1].dbid = UInt64(u32(db, offset + 0x70)) | UInt64(u32(db, offset + 0x74)) << 32
+            let artworkCount = Int(db.byte(at: offset + 0x7C)) | Int(db.byte(at: offset + 0x7D)) << 8
+            result[result.count - 1].hasArtwork = artworkCount > 0 || u32(db, offset + 0x80) > 0
             offset += totalLength
         }
         return result

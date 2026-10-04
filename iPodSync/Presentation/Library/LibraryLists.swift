@@ -40,7 +40,7 @@ struct SongsListView: View {
             ForEach(Array(sorted.enumerated()), id: \.element.id) { index, song in
                 if index > 0 { Divider().padding(.leading, 52) }
                 SongRow(song: song,
-                        subtitle: "\(song.artist) · \(song.sizeText)",
+                        subtitle: song.librarySubtitle,
                         simulator: simulator,
                         library: library,
                         order: sorted.map(\.id))
@@ -73,7 +73,7 @@ struct ArtistsListView: View {
                 Divider()
                 ForEach(Array(group.songs.enumerated()), id: \.element.id) { i, song in
                     if i > 0 { Divider().padding(.leading, 78) }
-                    SongRow(song: song, subtitle: song.sizeText, indented: true,
+                    SongRow(song: song, subtitle: [song.albumName, song.durationText ?? song.sizeText].compactMap { $0 }.joined(separator: " · "), indented: true,
                             simulator: simulator, library: library, order: order)
                 }
             }
@@ -118,17 +118,25 @@ struct AlbumsGridView: View {
 
     private let columns = [GridItem(.adaptive(minimum: 118), spacing: 14)]
 
+    /// Un cuadro por álbum (mismo álbum y artista), no uno por canción.
+    private var albums: [(key: String, songs: [Song])] {
+        Dictionary(grouping: songs, by: \.albumKey)
+            .map { (key: $0.key, songs: $0.value.sorted(by: Song.albumOrder)) }
+            .sorted { $0.songs[0].album.localizedCompare($1.songs[0].album) == .orderedAscending }
+    }
+
     var body: some View {
         LazyVGrid(columns: columns, alignment: .leading, spacing: 18) {
-            ForEach(songs.sorted { $0.album < $1.album }) { song in
-                Button { onOpen(song) } label: {
+            ForEach(albums, id: \.key) { album in
+                let cover = album.songs[0]
+                Button { onOpen(cover) } label: {
                     VStack(alignment: .leading, spacing: 6) {
-                        AlbumArtwork(song: song, status: simulator.status(of: song))
+                        AlbumArtwork(song: cover, status: Self.albumStatus(album.songs, simulator))
                         VStack(alignment: .leading, spacing: 1) {
-                            Text(song.album)
+                            Text(cover.album)
                                 .font(.system(size: 12, weight: .semibold))
                                 .lineLimit(1)
-                            Text(song.artist)
+                            Text(album.songs.count == 1 ? cover.artist : "\(cover.artist) · \(album.songs.count) canciones")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                                 .lineLimit(1)
@@ -137,12 +145,28 @@ struct AlbumsGridView: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .draggable(song.id.uuidString)
-                .contextMenu { SongContextMenu(song: song, simulator: simulator) }
-                .accessibilityLabel("\(song.album), \(song.artist)")
+                .contextMenu {
+                    let sendable = album.songs.filter(simulator.canSend).map(\.id)
+                    Button(album.songs.count == 1 ? "Enviar al iPod" : "Enviar álbum al iPod (\(sendable.count))") {
+                        simulator.sendAll(sendable)
+                    }
+                    .disabled(sendable.isEmpty)
+                }
+                .accessibilityLabel("\(cover.album), \(cover.artist), \(album.songs.count) canciones")
                 .accessibilityHint("Abre el álbum")
             }
         }
+    }
+
+    /// Estado del álbum: enviando si alguna se envía, en el iPod si todas están, en cola si alguna espera.
+    static func albumStatus(_ songs: [Song], _ simulator: IPodSimulator) -> SongSyncStatus {
+        let statuses = songs.map(simulator.status(of:))
+        for status in statuses {
+            if case .sending = status { return status }
+        }
+        if statuses.allSatisfy({ $0 == .onDevice }) { return .onDevice }
+        if statuses.contains(.queued) { return .queued }
+        return .notOnDevice
     }
 }
 
@@ -151,11 +175,9 @@ struct AlbumArtwork: View {
     let status: SongSyncStatus
 
     var body: some View {
-        RoundedRectangle(cornerRadius: 8, style: .continuous)
-            .fill(song.artworkGradient)
-            .aspectRatio(1, contentMode: .fit)
+        SongArtworkView(song: song, size: nil, cornerRadius: 8)
             .overlay(alignment: .bottomLeading) {
-                Text(Song.initials(of: song.album))
+                Text(song.artworkData == nil ? Song.initials(of: song.album) : "")
                     .font(.system(size: 11, weight: .bold))
                     .foregroundStyle(.white.opacity(0.92))
                     .padding(8)
@@ -192,12 +214,29 @@ struct AlbumArtwork: View {
 }
 
 struct AlbumDetailView: View {
+    /// Cualquier canción del álbum; se muestran todas las que comparten álbum y artista.
     let song: Song
     let simulator: IPodSimulator
     let library: LibraryState
     let onBack: () -> Void
 
+    private var tracks: [Song] {
+        simulator.songs.filter { $0.albumKey == song.albumKey }.sorted(by: Song.albumOrder)
+    }
+
+    private var details: String {
+        let total = tracks.compactMap(\.durationSeconds).reduce(0, +)
+        let minutes = Int((total / 60).rounded())
+        return [song.artist,
+                song.albumName == nil ? "Sencillo" : song.year.map(String.init),
+                tracks.count == 1 ? "1 canción" : "\(tracks.count) canciones",
+                total > 0 ? "\(minutes) min" : nil].compactMap { $0 }.joined(separator: " · ")
+    }
+
     var body: some View {
+        let list = tracks
+        let sendable = list.filter(simulator.canSend).map(\.id)
+
         VStack(alignment: .leading, spacing: 14) {
             Button(action: onBack) {
                 Label("Álbumes", systemImage: "chevron.left")
@@ -207,28 +246,34 @@ struct AlbumDetailView: View {
             .help("Volver a Álbumes (⌘[)")
 
             HStack(alignment: .bottom, spacing: 16) {
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(song.artworkGradient)
-                    .frame(width: 120, height: 120)
+                SongArtworkView(song: list.first(where: { $0.artworkData != nil }) ?? song, size: 120, cornerRadius: 10)
                     .shadow(color: .black.opacity(0.16), radius: 9, y: 6)
                     .accessibilityHidden(true)
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text(song.album)
                         .font(.title2.weight(.bold))
-                    Text("\(song.artist) · Sencillo · \(song.sizeText)")
+                        .lineLimit(2)
+                    Text(details)
                         .foregroundStyle(.secondary)
-                    if simulator.canSend(song) {
-                        Button("Enviar al iPod") { simulator.send(song.id) }
-                            .buttonStyle(.borderedProminent)
-                            .padding(.top, 6)
+                    if !sendable.isEmpty {
+                        Button(list.count == 1 ? "Enviar al iPod" : "Enviar \(sendable.count) al iPod") {
+                            simulator.sendAll(sendable)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .padding(.top, 6)
                     }
                 }
             }
 
             LibraryCard {
-                SongRow(song: song, subtitle: "1 · \(song.sizeText)",
-                        simulator: simulator, library: library, order: [song.id])
+                ForEach(Array(list.enumerated()), id: \.element.id) { index, track in
+                    if index > 0 { Divider().padding(.leading, 52) }
+                    SongRow(song: track,
+                            subtitle: ["\(track.trackNumber ?? index + 1)", track.durationText ?? track.sizeText]
+                                .joined(separator: " · "),
+                            simulator: simulator, library: library, order: list.map(\.id))
+                }
             }
         }
     }

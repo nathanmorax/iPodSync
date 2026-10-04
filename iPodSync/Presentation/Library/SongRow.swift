@@ -23,9 +23,7 @@ struct SongRow: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            RoundedRectangle(cornerRadius: 5, style: .continuous)
-                .fill(song.artworkGradient)
-                .frame(width: compact ? 22 : 30, height: compact ? 22 : 30)
+            SongArtworkView(song: song, size: compact ? 22 : 30)
                 .overlay(
                     RoundedRectangle(cornerRadius: 5, style: .continuous)
                         .strokeBorder(.black.opacity(0.10), lineWidth: 0.5)
@@ -144,10 +142,54 @@ struct SongContextMenu: View {
                 .disabled(!simulator.canSend(song))
         }
         Divider()
+        if let url = song.fileURL {
+            Button("Mostrar en Finder") {
+                let didAccess = url.startAccessingSecurityScopedResource()
+                NSWorkspace.shared.activateFileViewerSelecting([url])
+                if didAccess { url.stopAccessingSecurityScopedResource() }
+            }
+            .disabled(song.isFileMissing)
+        }
         Button("Copiar título") {
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString("\(song.title) — \(song.artist)", forType: .string)
         }
+        if song.fileURL != nil || song.bookmark != nil {
+            Divider()
+            if let library, library.selection.count > 1, library.selection.contains(song.id) {
+                Button("Quitar \(library.selection.count) canciones de la biblioteca") {
+                    simulator.removeSongs(library.selection)
+                    library.clearSelection()
+                }
+            } else {
+                Button("Quitar de la biblioteca") { simulator.removeSongs([song.id]) }
+            }
+        }
+    }
+}
+
+/// Portada de una canción de la Mac: la del archivo si tiene, si no un color.
+/// `size` nil = cuadrada y del ancho disponible (para la cuadrícula de álbumes).
+struct SongArtworkView: View {
+    let song: Song
+    var size: CGFloat? = 30
+    var cornerRadius: CGFloat = 5
+
+    var body: some View {
+        Group {
+            if let data = song.artworkData, let image = NSImage(data: data) {
+                Image(nsImage: image)
+                    .resizable()
+                    .interpolation(.high)
+                    .aspectRatio(contentMode: .fill)
+            } else {
+                Rectangle().fill(song.artworkGradient)
+            }
+        }
+        .frame(width: size, height: size)
+        .aspectRatio(1, contentMode: .fit)
+        .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+        .accessibilityHidden(true)
     }
 }
 

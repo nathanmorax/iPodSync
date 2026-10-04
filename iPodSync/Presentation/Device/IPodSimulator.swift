@@ -33,6 +33,18 @@ final class IPodSimulator {
     /// Canciones enviadas en esta sesión al iPod real (el envío todavía es simulado).
     private(set) var sentIDs: Set<Song.ID> = []
     @ObservationIgnored private var trackKeys: Set<String> = []
+    /// Archivos que se están agregando a la biblioteca ahora mismo.
+    private(set) var importingCount = 0
+    /// Avisos al agregar archivos (formato no compatible, duplicados…).
+    var importMessage: String?
+    /// Error al enviar al iPod real (se muestra en una alerta).
+    var sendMessage: String?
+    /// Con el iPod real: copia la canción de verdad (lo pone IPodMonitor).
+    @ObservationIgnored var realSender: ((Song, @escaping @Sendable (Double) -> Void) async throws -> Void)?
+    /// Con el iPod real: al terminar la cola, volver a leer la música del iPod.
+    @ObservationIgnored var onRealQueueFinished: (() -> Void)?
+    /// La biblioteca que no se está usando: la de ejemplo mientras se usa el iPod real, y al revés.
+    @ObservationIgnored private var otherLibrary: [Song] = []
     private(set) var recentIDs: [Song.ID]
     private(set) var nav: [NavEntry] = [NavEntry(screen: .main)]
     private(set) var transfer: TransferState?
@@ -46,6 +58,8 @@ final class IPodSimulator {
         self.recentIDs = songs.filter(\.isOnDevice).map(\.id)
         let musicGB = songs.filter(\.isOnDevice).map(\.sizeMB).reduce(0, +) / 1024
         self.otherUsedGB = MockLibrary.capacityGB - MockLibrary.initialFreeGB - musicGB
+        // Biblioteca real guardada (se usa al cambiar al iPod real).
+        self.otherLibrary = MacLibraryStore.load()
     }
 
     // MARK: - Datos derivados
@@ -223,6 +237,14 @@ final class IPodSimulator {
         isSimulated = simulated
         self.device = simulated ? nil : device
 
+        // Biblioteca: las canciones de ejemplo (MockLibrary) solo existen con el iPod simulado.
+        // Con el iPod real la biblioteca empieza vacía y solo tiene lo que agregues (⌘O o arrastrando).
+        if wasSimulated != simulated {
+            cancelTransfers()
+            swap(&songs, &otherLibrary)
+            recentIDs = simulated ? songs.filter(\.isOnDevice).map(\.id) : []
+        }
+
         if simulated {
             if !wasSimulated {
                 isConnected = true
@@ -265,23 +287,43 @@ final class IPodSimulator {
         }
     }
 
-    /// Agrega archivos de audio elegidos o arrastrados desde el Finder a la biblioteca.
-    @discardableResult
-    func addSongs(from urls: [URL]) -> [Song.ID] {
-        var added: [Song.ID] = []
-        for url in urls where url.isFileURL {
-            let title = url.deletingPathExtension().lastPathComponent
-            guard !songs.contains(where: { $0.title == title }) else { continue }
-            let bytes = (try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0
-            let song = Song(title: title,
-                            artist: "Artista desconocido",
-                            sizeMB: max(0.1, Double(bytes) / 1_048_576),
-                            artworkHue: Double.random(in: 0..<1),
-                            isOnDevice: false)
-            songs.append(song)
-            added.append(song.id)
+    // MARK: - Biblioteca de la Mac
+
+    /// Agrega archivos de audio (⌘O o arrastrados desde el Finder): lee sus datos y portada.
+    /// Con el iPod real la biblioteca se guarda y sigue ahí al volver a abrir la app.
+    func importFiles(_ urls: [URL]) async {
+        let files = urls.filter(\.isFileURL)
+        guard !files.isEmpty else { return }
+        importingCount += files.count
+        defer { importingCount -= files.count }
+
+        var problems: [String] = []
+        var duplicates = 0
+        for url in files {
+            do {
+                let song = try await MacLibraryImporter.importFile(url)
+                let already = songs.contains {
+                    $0.fileURL?.standardizedFileURL == url.standardizedFileURL
+                        || ($0.title == song.title && $0.artist == song.artist && $0.album == song.album)
+                }
+                if already { duplicates += 1; continue }
+                songs.append(song)
+            } catch {
+                problems.append(error.localizedDescription)
+            }
         }
-        return added
+        if !isSimulated { MacLibraryStore.save(songs) }
+
+        if duplicates > 0 {
+            problems.append(duplicates == 1 ? "1 canción ya estaba en la biblioteca." : "\(duplicates) canciones ya estaban en la biblioteca.")
+        }
+        if !problems.isEmpty { importMessage = problems.joined(separator: "\n") }
+    }
+
+    /// Quita canciones de la biblioteca (el archivo sigue en la Mac).
+    func removeSongs(_ ids: Set<Song.ID>) {
+        songs.removeAll { ids.contains($0.id) && status(of: $0) != .queued }
+        if !isSimulated { MacLibraryStore.save(songs) }
     }
 
     func sendAll(_ ids: [Song.ID]) {
@@ -309,13 +351,40 @@ final class IPodSimulator {
                                          total: position + queue.count, progress: 0)
             }
 
-            let duration = max(1.8, song.sizeMB * 0.3)
-            let steps = 100
-            for step in 1...steps {
-                try? await Task.sleep(for: .seconds(duration / Double(steps)))
+            if !isSimulated, let realSender {
+                // iPod real: copiar de verdad.
+                let current = position
+                do {
+                    try await realSender(song) { [weak self] value in
+                        Task { @MainActor in
+                            guard let self, self.transfer?.song.id == id else { return }
+                            self.transfer?.progress = value
+                            self.transfer?.total = current + self.queue.count
+                        }
+                    }
+                } catch {
+                    // Se detiene la cola: mejor revisar antes de seguir escribiendo en el iPod.
+                    let message = error is CancellationError
+                        ? nil
+                        : "“\(song.title)”: \(error.localizedDescription)"
+                    queue.removeAll()
+                    withAnimation(.easeOut(duration: 0.2)) { transfer = nil }
+                    transferTask = nil
+                    if let message { sendMessage = message }
+                    onRealQueueFinished?()
+                    return
+                }
                 if Task.isCancelled { return }
-                transfer?.progress = Double(step) / Double(steps)
-                transfer?.total = position + queue.count
+            } else {
+                // iPod de prueba: solo la animación.
+                let duration = max(1.8, song.sizeMB * 0.3)
+                let steps = 100
+                for step in 1...steps {
+                    try? await Task.sleep(for: .seconds(duration / Double(steps)))
+                    if Task.isCancelled { return }
+                    transfer?.progress = Double(step) / Double(steps)
+                    transfer?.total = position + queue.count
+                }
             }
 
             if let index = songs.firstIndex(where: { $0.id == id }) {
@@ -327,6 +396,7 @@ final class IPodSimulator {
         }
 
         transfer?.finished = true
+        if !isSimulated { onRealQueueFinished?() }
         try? await Task.sleep(for: .seconds(1.2))
         if Task.isCancelled { return }
 

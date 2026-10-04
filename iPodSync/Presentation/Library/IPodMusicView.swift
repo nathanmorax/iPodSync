@@ -106,7 +106,7 @@ struct IPodMusicView: View {
                         ForEach(groups, id: \.key) { group in
                             Section {
                                 ForEach(group.tracks) { track in
-                                    IPodTrackRow(track: track, subtitle: subtitle(for: track))
+                                    IPodTrackRow(track: track, subtitle: subtitle(for: track), artwork: monitor.artwork)
                                     Divider().padding(.leading, 52)
                                 }
                             } header: {
@@ -158,20 +158,11 @@ struct IPodMusicView: View {
 struct IPodTrackRow: View {
     let track: IPodTrack
     let subtitle: String
+    var artwork: IPodArtworkStore? = nil
 
     var body: some View {
         HStack(spacing: 10) {
-            RoundedRectangle(cornerRadius: 5, style: .continuous)
-                .fill(LinearGradient(colors: [Color(hue: track.artworkHue, saturation: 0.40, brightness: 0.86),
-                                              Color(hue: track.artworkHue, saturation: 0.62, brightness: 0.64)],
-                                     startPoint: .topLeading, endPoint: .bottomTrailing))
-                .frame(width: 30, height: 30)
-                .overlay {
-                    Image(systemName: "music.note")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.8))
-                }
-                .accessibilityHidden(true)
+            IPodArtworkView(track: track, artwork: artwork, size: 30)
 
             VStack(alignment: .leading, spacing: 1) {
                 Text(track.title)
@@ -208,6 +199,46 @@ struct IPodTrackRow: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(track.title), \(subtitle), \(track.durationText)")
+    }
+}
+
+/// Portada de una canción del iPod. Mientras carga (o si no tiene) muestra un color con una nota.
+struct IPodArtworkView: View {
+    let track: IPodTrack
+    let artwork: IPodArtworkStore?
+    var size: CGFloat = 30
+
+    @State private var image: CGImage?
+
+    var body: some View {
+        ZStack {
+            if let image {
+                Image(decorative: image, scale: 1)
+                    .resizable()
+                    .interpolation(.high)
+                    .aspectRatio(contentMode: .fill)
+                    .transition(.opacity)
+            } else {
+                LinearGradient(colors: [Color(hue: track.artworkHue, saturation: 0.40, brightness: 0.86),
+                                        Color(hue: track.artworkHue, saturation: 0.62, brightness: 0.64)],
+                               startPoint: .topLeading, endPoint: .bottomTrailing)
+                Image(systemName: "music.note")
+                    .font(.system(size: size * 0.37, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.8))
+            }
+        }
+        .frame(width: size, height: size)
+        .clipShape(RoundedRectangle(cornerRadius: size * 0.17, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: size * 0.17, style: .continuous)
+                .strokeBorder(.black.opacity(0.10), lineWidth: 0.5)
+        )
+        .accessibilityHidden(true)
+        .task(id: track.dbid) {
+            guard let artwork else { return }
+            let loaded = await artwork.image(for: track.dbid)
+            withAnimation(.easeOut(duration: 0.15)) { image = loaded }
+        }
     }
 }
 

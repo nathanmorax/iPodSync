@@ -51,7 +51,7 @@ struct IndexedSongsList: View {
                             Section {
                                 ForEach(group.songs) { song in
                                     SongRow(song: song,
-                                            subtitle: "\(song.artist) · \(song.sizeText)",
+                                            subtitle: song.isFileMissing ? "No se encuentra el archivo" : song.librarySubtitle,
                                             simulator: simulator,
                                             library: library,
                                             order: order)

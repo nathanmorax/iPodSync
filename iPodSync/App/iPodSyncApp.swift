@@ -14,12 +14,14 @@ struct iPodSyncApp: App {
     @State private var simulator = IPodSimulator()
     @State private var library = LibraryState()
     @State private var monitor = IPodMonitor()
+    @State private var backup = BackupViewModel()
 
     var body: some Scene {
         // Ventana estándar: se puede mover, cambiar de tamaño, minimizar y poner en pantalla completa.
         // macOS recuerda su tamaño y posición entre aperturas.
         Window("iPodSync", id: "main") {
             RootView(simulator: simulator, library: library, monitor: monitor)
+                .environment(backup)
                 .task {
                     appDelegate.simulator = simulator
                     appDelegate.library = library
@@ -32,7 +34,7 @@ struct iPodSyncApp: App {
         .defaultPosition(.center)
         .windowResizability(.contentSize)
         .commands {
-            IPodSyncCommands(simulator: simulator, library: library, monitor: monitor)
+            IPodSyncCommands(simulator: simulator, library: library, monitor: monitor, backup: backup)
         }
 
         Settings {
