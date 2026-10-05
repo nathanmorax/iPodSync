@@ -102,12 +102,62 @@ struct IndexedSongsList: View {
                         }
                     }
                 }
+                .scrollIndicators(isSearching ? .automatic : .hidden)
 
                 if !isSearching {
                     AlphabetIndex(available: Set(groups.map(\.letter))) { letter in
                         withAnimation(.easeOut(duration: 0.2)) {
                             proxy.scrollTo(letter, anchor: .top)
                         }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// ScrollView con el índice A–Z a la derecha (Artistas y Álbumes).
+/// `entries`: en el orden en que se ven, el id de cada elemento (el contenido debe ponerle `.id(id)`)
+/// y el texto por el que se ordena; tocar una letra lleva al primero que empieza con ella.
+struct AlphabetIndexedScroll<Content: View>: View {
+    let entries: [(id: String, title: String)]
+    var showsIndex = true
+    let content: () -> Content
+
+    init(entries: [(id: String, title: String)], showsIndex: Bool = true,
+         @ViewBuilder content: @escaping () -> Content) {
+        self.entries = entries
+        self.showsIndex = showsIndex
+        self.content = content
+    }
+
+    /// Letra → primer elemento que empieza con ella.
+    private var firstByLetter: [String: String] {
+        var result: [String: String] = [:]
+        for entry in entries {
+            let letter = IndexedSongsList.letter(for: entry.title)
+            if result[letter] == nil { result[letter] = entry.id }
+        }
+        return result
+    }
+
+    var body: some View {
+        let targets = firstByLetter
+        ScrollViewReader { proxy in
+            HStack(alignment: .top, spacing: 4) {
+                // La cuadrícula de álbumes no tiene ancho propio: sin esto la lista se encoge
+                // y queda centrada y angosta. Así ocupa todo el ancho que deja el índice.
+                ScrollView {
+                    content()
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .frame(maxWidth: .infinity)
+                // Con índice A–Z la barra de scroll sobra y se encima con las portadas.
+                .scrollIndicators(showsIndex ? .hidden : .automatic)
+                if showsIndex {
+                    AlphabetIndex(available: Set(targets.keys)) { letter in
+                        guard let id = targets[letter] else { return }
+                        withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(id, anchor: .top) }
                     }
                 }
             }
@@ -131,13 +181,16 @@ struct AlphabetIndex: View {
                 } label: {
                     Text(letter)
                         .font(.system(size: 8.5, weight: .semibold))
-                        .foregroundStyle(enabled ? AnyShapeStyle(TintShapeStyle.tint) : AnyShapeStyle(HierarchicalShapeStyle.tertiary))
+                        // Las letras sin nada van en gris (no azul), pero legibles: antes eran
+                        // .tertiary y además .disabled las apagaba otra vez, y casi no se veían.
+                        .foregroundStyle(enabled ? AnyShapeStyle(TintShapeStyle.tint)
+                                                 : AnyShapeStyle(Color.white.opacity(0.42)))
                         .frame(width: 14)
                         .frame(maxHeight: .infinity)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .disabled(!enabled)
+                .allowsHitTesting(enabled)
                 .accessibilityLabel("Ir a la letra \(letter)")
             }
         }

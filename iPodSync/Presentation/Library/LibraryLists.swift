@@ -79,19 +79,20 @@ struct ArtistsListView: View {
         let names = all.map(\.artist)
         // Mientras buscas, todos los artistas se ven abiertos para que aparezcan los resultados.
         let searching = !library.query.trimmingCharacters(in: .whitespaces).isEmpty
-        let order = all.filter { searching || !library.collapsedArtists.contains($0.artist) }.flatMap { $0.songs.map(\.id) }
+        let order = all.filter { searching || library.expandedArtists.contains($0.artist) }.flatMap { $0.songs.map(\.id) }
         LibraryCard {
             ForEach(Array(all.enumerated()), id: \.element.artist) { index, group in
-                let expanded = searching || !library.collapsedArtists.contains(group.artist)
+                let expanded = searching || library.expandedArtists.contains(group.artist)
                 if index > 0 { Divider() }
                 ArtistHeader(name: group.artist,
                              count: group.songs.count,
                              hue: group.songs.first?.artworkHue ?? 0,
                              isExpanded: expanded) {
                     withAnimation(.easeInOut(duration: 0.2)) {
-                        library.toggleArtist(group.artist, in: \.collapsedArtists, all: names)
+                        library.toggleArtist(group.artist, in: \.expandedArtists, all: names)
                     }
                 }
+                .id(group.artist)   // destino del índice A–Z
                 if expanded {
                     Divider()
                     ForEach(Array(group.songs.enumerated()), id: \.element.id) { i, song in
@@ -231,6 +232,7 @@ struct AlbumsGridView: View {
                 }
                 .accessibilityLabel("\(cover.album), \(cover.artist), \(album.songs.count) canciones")
                 .accessibilityHint("Abre el álbum")
+                .id(album.key)   // destino del índice A–Z
             }
         }
     }

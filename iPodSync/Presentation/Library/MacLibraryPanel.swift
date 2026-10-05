@@ -354,11 +354,12 @@ struct MacLibraryPanel: View {
             case .songs:
                 IndexedSongsList(songs: visible, simulator: simulator, library: library)
             case .artists:
-                ScrollView {
+                AlphabetIndexedScroll(entries: artistEntries, showsIndex: !isSearching) {
                     ArtistsListView(songs: visible, simulator: simulator, library: library)
                 }
             case .albums:
-                ScrollView {
+                AlphabetIndexedScroll(entries: albumEntries,
+                                      showsIndex: !isSearching && library.selectedAlbumID == nil) {
                     if let id = library.selectedAlbumID,
                        let song = simulator.songs.first(where: { $0.id == id }) {
                         AlbumDetailView(song: song, simulator: simulator, library: library) {
@@ -372,6 +373,24 @@ struct MacLibraryPanel: View {
                 }
             }
         }
+    }
+
+    // MARK: Índice A–Z (Artistas y Álbumes)
+
+    private var isSearching: Bool { SearchMatch.isSearching(library.query) }
+
+    /// Artistas en el orden en que se ven (alfabético cuando no buscas).
+    private var artistEntries: [(id: String, title: String)] {
+        Set(visible.map(\.artist))
+            .sorted { $0.localizedCompare($1) == .orderedAscending }
+            .map { (id: $0, title: $0) }
+    }
+
+    /// Álbumes en el orden de la cuadrícula (por nombre del álbum).
+    private var albumEntries: [(id: String, title: String)] {
+        Dictionary(grouping: visible, by: \.albumKey)
+            .map { (id: $0.key, title: $0.value[0].album) }
+            .sorted { $0.title.localizedCompare($1.title) == .orderedAscending }
     }
 
     @ViewBuilder

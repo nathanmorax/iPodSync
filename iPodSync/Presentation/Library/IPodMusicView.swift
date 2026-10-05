@@ -111,9 +111,10 @@ struct IPodMusicView: View {
     private var albumsGrid: some View {
         let columns = Array(repeating: GridItem(.flexible(), spacing: 12, alignment: .top),
                             count: max(2, min(3, columnCount)))
-        return ScrollView {
+        let all = albums
+        return AlphabetIndexedScroll(entries: all.map { (id: $0.key, title: $0.title) }, showsIndex: !isSearching) {
             LazyVGrid(columns: columns, alignment: .leading, spacing: 16) {
-                ForEach(albums, id: \.key) { album in
+                ForEach(all, id: \.key) { album in
                     let cover = album.tracks.first(where: \.hasArtwork) ?? album.tracks[0]
                     Button {
                         withAnimation(.easeInOut(duration: 0.25)) { library.openIPodAlbum = album.key }
@@ -157,6 +158,7 @@ struct IPodMusicView: View {
                     }
                     .accessibilityLabel("\(album.title), \(album.artist), \(album.tracks.count) canciones")
                     .accessibilityHint("Abre el álbum")
+                    .id(album.key)   // destino del índice A–Z
                 }
             }
             .padding(.horizontal, 2)
@@ -262,7 +264,7 @@ struct IPodMusicView: View {
                         ForEach(groups, id: \.key) { group in
                             // Mientras buscas, todos los artistas se ven abiertos.
                             let collapsed = scope == .artists && query.trimmingCharacters(in: .whitespaces).isEmpty
-                                && library.collapsedIPodArtists.contains(group.key)
+                                && !library.expandedIPodArtists.contains(group.key)
                             Section {
                                 if !collapsed {
                                     ForEach(group.tracks) { track in
@@ -279,9 +281,15 @@ struct IPodMusicView: View {
                     }
                 }
 
-                if scope == .songs && !isSearching {
-                    AlphabetIndex(available: Set(groups.map(\.key))) { letter in
-                        withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(letter, anchor: .top) }
+                .scrollIndicators(isSearching ? .automatic : .hidden)
+
+                if !isSearching {
+                    // Canciones: las secciones ya son letras. Artistas: la letra lleva al primer artista.
+                    let targets = Dictionary(groups.map { (IndexedSongsList.letter(for: $0.key), $0.key) },
+                                             uniquingKeysWith: { first, _ in first })
+                    AlphabetIndex(available: Set(targets.keys)) { letter in
+                        guard let key = targets[letter] else { return }
+                        withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(key, anchor: .top) }
                     }
                 }
             }
@@ -301,7 +309,7 @@ struct IPodMusicView: View {
         if scope == .artists {
             Button {
                 withAnimation(.easeInOut(duration: 0.2)) {
-                    library.toggleArtist(title, in: \.collapsedIPodArtists, all: allKeys)
+                    library.toggleArtist(title, in: \.expandedIPodArtists, all: allKeys)
                 }
             } label: {
                 headerContent(title, count: count, expanded: expanded)
