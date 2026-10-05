@@ -19,7 +19,8 @@ struct KeyHints: View {
         }
         .font(.caption)
         .foregroundStyle(.secondary)
-        .accessibilityElement(children: .combine)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Flechas arriba y abajo para navegar, Return para abrir, Escape para regresar. Arrastra canciones al iPod.")
     }
 
     private func hint(_ keys: [String], _ label: String) -> some View {

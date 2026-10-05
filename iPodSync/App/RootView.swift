@@ -65,9 +65,15 @@ struct RootView: View {
             } message: {
                 Text(simulator.importMessage ?? "")
             }
-            .sheet(isPresented: Binding(get: { backup.isPresented },
-                                        set: { if !$0 { backup.close() } })) {
-                BackupSheet(viewModel: backup, monitor: monitor)
+            // Respaldo en su propia ventana (una hoja oscurecía toda la ventana transparente).
+            .onChange(of: backup.isPresented, initial: true) { _, shown in
+                if shown {
+                    BackupWindow.shared.show(BackupSheet(viewModel: backup, monitor: monitor)) { [backup] in
+                        backup.close()
+                    }
+                } else {
+                    BackupWindow.shared.hide()
+                }
             }
             .onAppear {
                 // Que las flechas del teclado vayan al iPod al abrir, no al buscador.

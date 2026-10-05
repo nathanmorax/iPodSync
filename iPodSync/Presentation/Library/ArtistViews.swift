@@ -126,12 +126,13 @@ struct ArtistAlbumSectionHeader<Artwork: View, Accessory: View>: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+            // Solo el título y el año se leen juntos como encabezado; el botón "Enviar" queda aparte.
+            .accessibilityElement(children: .combine)
+            .accessibilityAddTraits(.isHeader)
             Spacer(minLength: 4)
             accessory
         }
         .padding(.top, 4)
-        .accessibilityElement(children: .combine)
-        .accessibilityAddTraits(.isHeader)
     }
 }
 

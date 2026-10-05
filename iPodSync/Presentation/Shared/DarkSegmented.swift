@@ -14,6 +14,8 @@ struct DarkSegmented<Value: Hashable, Content: View>: View {
     var height: CGFloat = 26
     /// true = las opciones se reparten el ancho; false = cada una mide lo que su contenido.
     var fillsWidth = true
+    /// Nombre del grupo para VoiceOver ("Ver por", "Álbumes por fila").
+    var title: String = ""
     let label: (Value, Bool) -> Content
 
     @Namespace private var namespace
@@ -22,11 +24,13 @@ struct DarkSegmented<Value: Hashable, Content: View>: View {
          options: [Value],
          height: CGFloat = 26,
          fillsWidth: Bool = true,
+         title: String = "",
          @ViewBuilder label: @escaping (Value, Bool) -> Content) {
         _selection = selection
         self.options = options
         self.height = height
         self.fillsWidth = fillsWidth
+        self.title = title
         self.label = label
     }
 
@@ -38,6 +42,8 @@ struct DarkSegmented<Value: Hashable, Content: View>: View {
         }
         .padding(2)
         .background(.black.opacity(0.3), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(title)
     }
 
     private func segment(_ option: Value) -> some View {

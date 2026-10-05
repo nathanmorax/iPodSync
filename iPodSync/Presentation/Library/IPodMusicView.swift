@@ -418,7 +418,7 @@ struct IPodTrackRow: View {
             }
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(track.title), \(subtitle), \(track.durationText)")
+        .accessibilityLabel([track.title, subtitle, track.durationText].filter { !$0.isEmpty }.joined(separator: ", "))
     }
 }
 

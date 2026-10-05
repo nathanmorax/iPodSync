@@ -60,6 +60,7 @@ struct LCDScreen: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Pantalla del iPod")
+        .accessibilityValue(simulator.transfer.map { "Enviando \($0.title)" } ?? simulator.statusTitle)
     }
 
     @ViewBuilder

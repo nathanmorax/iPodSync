@@ -11,14 +11,21 @@ import AppKit
 /// Semáforo de la ventana dibujado dentro de la barra del simulador.
 struct WindowTrafficLights: View {
     @State private var isHovering = false
+    /// Como los semáforos de macOS: grises cuando la ventana no está activa.
+    @Environment(\.appearsActive) private var appearsActive
+
+    /// La ventana del emulador (no "la activa": con Ajustes adelante, cerraba Ajustes).
+    private var emulatorWindow: NSWindow? {
+        NSApp.windows.first { $0 is EmulatorWindow }
+    }
 
     var body: some View {
         HStack(spacing: 8) {
             light(Color(hex: 0xFF5F57), symbol: "xmark", label: "Cerrar") {
-                NSApp.keyWindow?.close()
+                emulatorWindow?.close()
             }
             light(Color(hex: 0xFEBC2E), symbol: "minus", label: "Minimizar") {
-                NSApp.keyWindow?.miniaturize(nil)
+                emulatorWindow?.miniaturize(nil)
             }
             // La ventana tiene tamaño fijo, así que el botón verde va apagado (como en otras utilidades de macOS).
             Circle()
@@ -32,7 +39,7 @@ struct WindowTrafficLights: View {
     private func light(_ color: Color, symbol: String, label: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Circle()
-                .fill(color)
+                .fill(appearsActive || isHovering ? color : Color.white.opacity(0.22))
                 .frame(width: 12, height: 12)
                 .overlay {
                     if isHovering {

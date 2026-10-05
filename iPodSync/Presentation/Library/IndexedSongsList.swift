@@ -195,6 +195,8 @@ struct AlphabetIndex: View {
                 }
                 .buttonStyle(.plain)
                 .allowsHitTesting(enabled)
+                // VoiceOver solo anuncia las letras que llevan a algo.
+                .accessibilityHidden(!enabled)
                 .accessibilityLabel("Ir a la letra \(letter)")
             }
         }

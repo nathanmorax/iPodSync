@@ -20,8 +20,9 @@ struct CapacityBar: View {
                 Rectangle().fill(Color.green)
                     .frame(width: max(3, geo.size.width * music))
                 if pending > 0 {
+                    // Sin pasarse del total: si no cabe, la barra se llena y ya.
                     Rectangle().fill(Color.accentColor)
-                        .frame(width: max(3, geo.size.width * pending))
+                        .frame(width: max(3, geo.size.width * min(pending, max(0, 1 - other - music))))
                 }
                 Spacer(minLength: 0)
             }
@@ -33,6 +34,9 @@ struct CapacityBar: View {
         .animation(.easeOut(duration: 0.3), value: pending)
         .accessibilityElement()
         .accessibilityLabel("Espacio usado en el iPod")
+        .accessibilityValue("Música \(music.formatted(.percent.precision(.fractionLength(0)))), "
+                            + "otros \(other.formatted(.percent.precision(.fractionLength(0))))"
+                            + (pending > 0 ? ", por enviar \(pending.formatted(.percent.precision(.fractionLength(0))))" : ""))
     }
 }
 

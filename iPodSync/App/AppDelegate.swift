@@ -33,6 +33,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
 
+    /// ⌘Q a mitad de un respaldo o una restauración dejaría el iPod (o el respaldo) a medias.
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard backup.isRunning || simulator.isTransferring else { return .terminateNow }
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = backup.isRunning
+            ? "Hay un respaldo o una restauración en curso"
+            : "Se están enviando canciones al iPod"
+        alert.informativeText = backup.isRunning
+            ? "Si sales ahora, el iPod o el respaldo pueden quedar incompletos. Espera a que termine."
+            : "Si sales ahora se detiene el envío. Las canciones que ya se copiaron se quedan en el iPod."
+        alert.addButton(withTitle: "Esperar")
+        if !backup.isRunning {
+            alert.addButton(withTitle: "Salir de todos modos")
+        }
+        let answer = alert.runModal()
+        if !backup.isRunning, answer == .alertSecondButtonReturn {
+            simulator.cancelTransfers()
+            return .terminateNow
+        }
+        return .terminateCancel
+    }
+
     /// Clic en el ícono del Dock con la ventana minimizada: la vuelve a mostrar.
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         if !flag { showMainWindow() }

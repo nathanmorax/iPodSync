@@ -43,6 +43,17 @@ struct ClickWheel: View {
         }
         .frame(width: size, height: size)
         .disabled(!simulator.isConnected)
+        // VoiceOver: la rueda es un control "ajustable" (deslizar arriba/abajo mueve la selección),
+        // como la rueda de verdad. Los botones de adentro siguen accesibles uno por uno.
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Rueda de clic")
+        .accessibilityAdjustableAction { direction in
+            switch direction {
+            case .increment: simulator.moveDown()
+            case .decrement: simulator.moveUp()
+            @unknown default: break
+            }
+        }
     }
 
     private func wheelButton<Label: View>(_ name: String,

@@ -157,8 +157,8 @@ struct BackupSheet: View {
             Spacer()
             Button("Cancelar") { viewModel.close() }
                 .keyboardShortcut(.cancelAction)
+            // Sin atajo de Return: restaurar borra la música actual del iPod, que sea un clic a propósito.
             Button("Restaurar", role: .destructive) { viewModel.restore(from: url, monitor: monitor) }
-                .keyboardShortcut(.defaultAction)
         }
     }
 

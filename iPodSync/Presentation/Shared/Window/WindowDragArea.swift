@@ -14,30 +14,27 @@ struct WindowDragArea: NSViewRepresentable {
     func makeNSView(context: Context) -> NSView { DragView() }
     func updateNSView(_ nsView: NSView, context: Context) {}
 
-    /// Mueve la ventana a mano (posición del mouse en pantalla), así funciona aunque la ventana
-    /// sin marco tenga desactivado el arrastre de AppKit.
+    /// Arrastra la ventana con el mecanismo del sistema (`performDrag`): respeta la barra de menús,
+    /// el acomodo de ventanas en los bordes y Mission Control. Antes se movía a mano.
     final class DragView: NSView {
-        private var startMouse: NSPoint = .zero
-        private var startOrigin: NSPoint = .zero
-
         override var mouseDownCanMoveWindow: Bool { false }
         override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
         override func mouseDown(with event: NSEvent) {
             guard let window else { return }
             if event.clickCount == 2 {
-                window.miniaturize(nil)      // doble clic, como en la barra de título
+                // Doble clic como en una barra de título, según Ajustes del Sistema ›
+                // Escritorio y Dock › "Doble clic en la barra de título de una ventana para".
+                switch UserDefaults.standard.string(forKey: "AppleActionOnDoubleClick") {
+                case "None":
+                    break
+                default:
+                    // "Minimize" y "Maximize": la ventana es de tamaño fijo, así que se minimiza.
+                    window.miniaturize(nil)
+                }
                 return
             }
-            startMouse = NSEvent.mouseLocation
-            startOrigin = window.frame.origin
-        }
-
-        override func mouseDragged(with event: NSEvent) {
-            guard let window else { return }
-            let now = NSEvent.mouseLocation
-            window.setFrameOrigin(NSPoint(x: startOrigin.x + (now.x - startMouse.x),
-                                          y: startOrigin.y + (now.y - startMouse.y)))
+            window.performDrag(with: event)
         }
     }
 }

@@ -149,7 +149,7 @@ struct MacLibraryPanel: View {
     /// Canciones / Artistas / Álbumes como pestañas oscuras; en Álbumes, 2 o 3 por fila al final.
     private var scopeTabs: some View {
         HStack(spacing: 8) {
-            DarkSegmented(selection: $library.scope, options: LibraryScope.allCases) { scope, isOn in
+            DarkSegmented(selection: $library.scope, options: LibraryScope.allCases, title: "Ver por") { scope, isOn in
                 HStack(spacing: 5) {
                     Image(systemName: scope.systemImage)
                         .font(.system(size: 12))
@@ -519,7 +519,7 @@ struct AlbumColumnsPicker: View {
     @AppStorage(SettingsKey.albumColumns) private var columnCount = 2
 
     var body: some View {
-        DarkSegmented(selection: $columnCount, options: [2, 3], fillsWidth: false) { count, _ in
+        DarkSegmented(selection: $columnCount, options: [2, 3], fillsWidth: false, title: "Álbumes por fila") { count, _ in
             Image(systemName: count == 2 ? "square.grid.2x2" : "square.grid.3x3")
                 .font(.system(size: 12))
                 .accessibilityLabel("\(count) por fila")
