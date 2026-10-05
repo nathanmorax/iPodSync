@@ -140,9 +140,13 @@ nonisolated enum IPodTrackWriter {
         }
         let output = try FileHandle(forWritingTo: destination)
         defer { try? output.close() }
+        // Sin caché: si no, macOS "copia" los primeros MB a memoria al instante (la barra saltaba
+        // a ~75 %) y luego se queda esperando a que de verdad se escriban en el iPod.
+        _ = fcntl(output.fileDescriptor, F_NOCACHE, 1)
 
         var copied: Int64 = 0
-        while let chunk = try input.read(upToCount: 1 << 20), !chunk.isEmpty {
+        // Pedazos de 256 KB: en una canción de 4 MB son 16 avances y no 4.
+        while let chunk = try input.read(upToCount: 1 << 18), !chunk.isEmpty {
             try Task.checkCancellation()
             try output.write(contentsOf: chunk)
             copied += Int64(chunk.count)

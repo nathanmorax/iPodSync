@@ -66,7 +66,7 @@ struct LCDScreen: View {
     @ViewBuilder
     private var content: some View {
         if let transfer = simulator.transfer {
-            LCDTransferView(state: transfer, progress: simulator.transferProgress)
+            LCDTransferView(state: transfer, progress: simulator.transferProgress, simulator: simulator)
                 .transition(.opacity)
         } else if simulator.current.screen == .storage {
             LCDStorageView(simulator: simulator)
@@ -182,42 +182,153 @@ struct LCDScrollBar: View {
 
 // MARK: - Transferencia
 
+/// Como la pantalla "En reproducción" del iPod classic: "2 de 11", portada a la izquierda,
+/// canción / artista / álbum a la derecha y abajo la barra con los MB copiados.
+/// Caen notitas ♪ sobre la portada mientras se copia y, al pasar a la siguiente, la portada se voltea.
 struct LCDTransferView: View {
     let state: TransferState
     let progress: TransferProgress
+    let simulator: IPodSimulator
+
+    /// Una búsqueda por cambio de canción (no por avance: el progreso lo lee solo la barra).
+    private var song: Song? { simulator.songs.first { $0.id == state.songID } }
 
     var body: some View {
+        let song = song
         VStack(spacing: 8) {
-            Text(state.finished ? "LISTO" : "RECIBIENDO \(state.position)/\(state.total)")
+            Text(state.finished ? "LISTO" : "\(state.position) DE \(state.total)")
                 .font(.lcd(6.5, weight: .bold))
                 .tracking(1)
-            Text(state.title.uppercased())
-                .font(.lcd(9))
-                .tracking(1.5)
+            HStack(alignment: .top, spacing: 10) {
+                LCDFlippingCover(song: song, finished: state.finished)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(state.title.uppercased())
+                        .font(.lcd(8, weight: .bold))
+                    Text((song?.artist ?? "").uppercased())
+                        .font(.lcd(8))
+                    Text((song?.album ?? "").uppercased())
+                        .font(.lcd(8))
+                        .opacity(0.6)
+                }
+                .tracking(0.8)
                 .lineLimit(1)
-                .padding(.horizontal, 8)
-            LCDTransferProgress(progress: progress, finished: state.finished)
+                .padding(.top, 4)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            LCDTransferProgress(progress: progress, finished: state.finished, sizeMB: song?.sizeMB ?? 0)
         }
+        .padding(.horizontal, 12)
         .foregroundStyle(Theme.lcdInk)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
-/// Barra + porcentaje. Es la única vista que lee el progreso, así que solo ella se redibuja
-/// con cada avance (no el LCD completo ni la biblioteca).
+/// Portada que se voltea al cambiar de canción, con notitas cayendo mientras se copia.
+private struct LCDFlippingCover: View {
+    let song: Song?
+    let finished: Bool
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    private let size: CGFloat = 58
+
+    var body: some View {
+        ZStack {
+            if let song {
+                SongArtworkView(song: song, size: size, cornerRadius: 2)
+                    .shadow(color: .black.opacity(0.3), radius: 2, y: 2)
+                    .id(song.id)
+                    .transition(flip)
+            }
+            if !finished && !reduceMotion {
+                LCDFallingNotes()
+            }
+        }
+        .frame(width: size, height: size)
+        .clipped()
+        .accessibilityHidden(true)
+    }
+
+    /// La vieja gira hasta quedar de canto y la nueva entra girando desde el otro lado.
+    private var flip: AnyTransition {
+        guard !reduceMotion else { return .opacity }
+        return .asymmetric(
+            insertion: .modifier(active: FlipModifier(angle: -90), identity: FlipModifier(angle: 0))
+                .animation(.easeOut(duration: 0.25).delay(0.25)),
+            removal: .modifier(active: FlipModifier(angle: 90), identity: FlipModifier(angle: 0))
+                .animation(.easeIn(duration: 0.25))
+        )
+    }
+}
+
+private struct FlipModifier: ViewModifier {
+    let angle: Double
+
+    func body(content: Content) -> some View {
+        content
+            .rotation3DEffect(.degrees(angle), axis: (x: 0, y: 1, z: 0), perspective: 0.5)
+            .opacity(abs(angle) >= 90 ? 0 : 1)
+    }
+}
+
+/// Notitas ♪ que caen sobre la portada mientras se copia.
+private struct LCDFallingNotes: View {
+    /// Columna (pt desde la izquierda) y desfase de cada nota.
+    private let notes: [(x: CGFloat, delay: Double)] = [(14, 0), (30, 0.5), (8, 1.0), (24, 1.3)]
+    private let cycle = 1.6
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1 / 30)) { context in
+            let time = context.date.timeIntervalSinceReferenceDate
+            ZStack(alignment: .topLeading) {
+                ForEach(notes.indices, id: \.self) { index in
+                    let phase = ((time + notes[index].delay) / cycle).truncatingRemainder(dividingBy: 1)
+                    Text("♪")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(.white)
+                        .shadow(color: .black.opacity(0.4), radius: 1)
+                        .opacity(phase < 0.2 ? phase / 0.2 : (phase > 0.8 ? (1 - phase) / 0.2 : 1))
+                        .offset(x: notes[index].x, y: -12 + phase * 70)
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        }
+        .allowsHitTesting(false)
+    }
+}
+
+/// Barra delgada con MB copiados y totales. Es la única vista que lee el progreso, así que
+/// solo ella se redibuja con cada avance (no el LCD completo ni la biblioteca).
 private struct LCDTransferProgress: View {
     let progress: TransferProgress
     let finished: Bool
+    let sizeMB: Double
 
     var body: some View {
         let value = finished ? 1 : progress.value
-        LCDSegmentedBar(progress: value)
-        HStack(spacing: 2) {
-            Text("\(Int(value * 100))%")
-                .font(.lcd(16, weight: .heavy))
-                .monospacedDigit()
-            if !finished { BlinkingCursor() }
+        VStack(spacing: 3) {
+            Rectangle()
+                .strokeBorder(Theme.lcdInk, lineWidth: 1)
+                .frame(height: 7)
+                .overlay(alignment: .leading) {
+                    GeometryReader { geo in
+                        Rectangle()
+                            .fill(Theme.lcdInk)
+                            .frame(width: geo.size.width * min(max(value, 0), 1))
+                    }
+                }
+            HStack {
+                Text(megabytes(sizeMB * value))
+                Spacer()
+                Text(megabytes(sizeMB))
+            }
+            .font(.lcd(6.5))
+            .monospacedDigit()
         }
+        .accessibilityHidden(true)
+    }
+
+    private func megabytes(_ value: Double) -> String {
+        value.formatted(.number.precision(.fractionLength(1))) + " MB"
     }
 }
 
@@ -235,17 +346,6 @@ struct LCDSegmentedBar: View {
             }
         }
         .accessibilityHidden(true)
-    }
-}
-
-struct BlinkingCursor: View {
-    var body: some View {
-        TimelineView(.periodic(from: .now, by: 0.45)) { context in
-            let on = Int(context.date.timeIntervalSinceReferenceDate / 0.45) % 2 == 0
-            Rectangle()
-                .fill(Theme.lcdInk.opacity(on ? 0.4 : 0.08))
-                .frame(width: 8, height: 14)
-        }
     }
 }
 
@@ -360,7 +460,7 @@ struct PixelGrid: View {
 
 #Preview("LCDTransferView · recibiendo canción") {
     LCDTransferView(state: TransferState(songID: MockLibrary.songs[1].id, title: MockLibrary.songs[1].title, position: 1, total: 3),
-                    progress: TransferProgress(0.48))
+                    progress: TransferProgress(0.48), simulator: IPodSimulator())
         .frame(width: 204, height: 133)
         .background(Theme.lcdBackground)
         .padding()
@@ -368,7 +468,7 @@ struct PixelGrid: View {
 
 #Preview("LCDTransferView · listo") {
     LCDTransferView(state: TransferState(songID: MockLibrary.songs[1].id, title: MockLibrary.songs[1].title, position: 3, total: 3, finished: true),
-                    progress: TransferProgress(1))
+                    progress: TransferProgress(1), simulator: IPodSimulator())
         .frame(width: 204, height: 133)
         .background(Theme.lcdBackground)
         .padding()
@@ -389,12 +489,6 @@ struct PixelGrid: View {
 
 #Preview("BatteryIndicator · batería") {
     BatteryIndicator(level: 3)
-        .padding()
-        .background(Theme.lcdBackground)
-}
-
-#Preview("BlinkingCursor · cursor") {
-    BlinkingCursor()
         .padding()
         .background(Theme.lcdBackground)
 }
