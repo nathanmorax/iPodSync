@@ -65,7 +65,7 @@ struct LCDScreen: View {
     @ViewBuilder
     private var content: some View {
         if let transfer = simulator.transfer {
-            LCDTransferView(state: transfer)
+            LCDTransferView(state: transfer, progress: simulator.transferProgress)
                 .transition(.opacity)
         } else if simulator.current.screen == .storage {
             LCDStorageView(simulator: simulator)
@@ -183,27 +183,40 @@ struct LCDScrollBar: View {
 
 struct LCDTransferView: View {
     let state: TransferState
+    let progress: TransferProgress
 
     var body: some View {
         VStack(spacing: 8) {
             Text(state.finished ? "LISTO" : "RECIBIENDO \(state.position)/\(state.total)")
                 .font(.lcd(6.5, weight: .bold))
                 .tracking(1)
-            Text(state.song.title.uppercased())
+            Text(state.title.uppercased())
                 .font(.lcd(9))
                 .tracking(1.5)
                 .lineLimit(1)
                 .padding(.horizontal, 8)
-            LCDSegmentedBar(progress: state.finished ? 1 : state.progress)
-            HStack(spacing: 2) {
-                Text("\(state.finished ? 100 : Int(state.progress * 100))%")
-                    .font(.lcd(16, weight: .heavy))
-                    .monospacedDigit()
-                if !state.finished { BlinkingCursor() }
-            }
+            LCDTransferProgress(progress: progress, finished: state.finished)
         }
         .foregroundStyle(Theme.lcdInk)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+/// Barra + porcentaje. Es la única vista que lee el progreso, así que solo ella se redibuja
+/// con cada avance (no el LCD completo ni la biblioteca).
+private struct LCDTransferProgress: View {
+    let progress: TransferProgress
+    let finished: Bool
+
+    var body: some View {
+        let value = finished ? 1 : progress.value
+        LCDSegmentedBar(progress: value)
+        HStack(spacing: 2) {
+            Text("\(Int(value * 100))%")
+                .font(.lcd(16, weight: .heavy))
+                .monospacedDigit()
+            if !finished { BlinkingCursor() }
+        }
     }
 }
 
@@ -345,14 +358,16 @@ struct PixelGrid: View {
 }
 
 #Preview("LCDTransferView · recibiendo canción") {
-    LCDTransferView(state: TransferState(song: MockLibrary.songs[1], position: 1, total: 3, progress: 0.48))
+    LCDTransferView(state: TransferState(songID: MockLibrary.songs[1].id, title: MockLibrary.songs[1].title, position: 1, total: 3),
+                    progress: TransferProgress(0.48))
         .frame(width: 204, height: 133)
         .background(Theme.lcdBackground)
         .padding()
 }
 
 #Preview("LCDTransferView · listo") {
-    LCDTransferView(state: TransferState(song: MockLibrary.songs[1], position: 3, total: 3, progress: 1, finished: true))
+    LCDTransferView(state: TransferState(songID: MockLibrary.songs[1].id, title: MockLibrary.songs[1].title, position: 3, total: 3, finished: true),
+                    progress: TransferProgress(1))
         .frame(width: 204, height: 133)
         .background(Theme.lcdBackground)
         .padding()

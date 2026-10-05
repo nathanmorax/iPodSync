@@ -178,48 +178,31 @@ struct ArtistAlbumTile<Artwork: View>: View {
 // MARK: - Mac
 
 struct ArtistsGridView: View {
-    let songs: [Song]
+    /// Artistas ya agrupados y ordenados (LibraryIndex.artists), calculados una vez en el panel.
+    let groups: [LibraryGroup<Song>]
     let simulator: IPodSimulator
-    var query: String = ""
     let onOpen: (String) -> Void
 
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 8, alignment: .top), count: 3)
 
-    /// Artistas en orden: alfabético, o con búsqueda primero el que mejor coincide.
-    static func groups(_ songs: [Song], query: String) -> [(artist: String, songs: [Song])] {
-        let grouped = Dictionary(grouping: songs, by: \.artist)
-            .map { (artist: $0.key, songs: $0.value.sorted(by: Song.albumOrder)) }
-        guard SearchMatch.isSearching(query) else {
-            return grouped.sorted { $0.artist.localizedCompare($1.artist) == .orderedAscending }
-        }
-        func best(_ songs: [Song]) -> SearchMatch {
-            songs.map { $0.searchMatch(query) ?? SearchMatch.genre }.min() ?? SearchMatch.genre
-        }
-        return grouped.sorted { a, b in
-            let rankA = best(a.songs), rankB = best(b.songs)
-            if rankA != rankB { return rankA < rankB }
-            return a.artist.localizedCompare(b.artist) == .orderedAscending
-        }
-    }
-
     var body: some View {
         LazyVGrid(columns: columns, alignment: .center, spacing: 16) {
-            ForEach(Self.groups(songs, query: query), id: \.artist) { group in
-                let cover = group.songs.first(where: { $0.artworkData != nil }) ?? group.songs[0]
-                Button { onOpen(group.artist) } label: {
-                    ArtistCell(name: group.artist, count: group.songs.count) {
+            ForEach(groups) { group in
+                let cover = group.items.first(where: { $0.artworkData != nil }) ?? group.items[0]
+                Button { onOpen(group.id) } label: {
+                    ArtistCell(name: group.id, count: group.items.count) {
                         SongArtworkView(song: cover, size: nil, cornerRadius: 0)
                     }
                 }
                 .buttonStyle(.plain)
-                .help(group.artist)
+                .help(group.id)
                 .contextMenu {
-                    let sendable = group.songs.filter(simulator.canSend).map(\.id)
+                    let sendable = group.items.filter(simulator.canSend).map(\.id)
                     Button("Enviar \(sendable.count) al iPod") { simulator.sendAll(sendable) }
                         .disabled(sendable.isEmpty)
                 }
-                .id(group.artist)   // destino del índice A–Z
-                .accessibilityLabel("\(group.artist), \(group.songs.count) canciones")
+                .id(group.id)   // destino del índice A–Z
+                .accessibilityLabel("\(group.id), \(group.items.count) canciones")
                 .accessibilityHint("Abre el artista")
             }
         }

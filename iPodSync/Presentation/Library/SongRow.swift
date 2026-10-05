@@ -19,7 +19,6 @@ struct SongRow: View {
 
     @AppStorage(SettingsKey.rowDensity) private var density = "regular"
 
-    private var status: SongSyncStatus { simulator.status(of: song) }
     private var isSelected: Bool { library.selection.contains(song.id) }
     private var compact: Bool { density == "compact" }
 
@@ -90,7 +89,6 @@ struct SongRow: View {
                 .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
         }
         .contextMenu { SongContextMenu(song: song, simulator: simulator, library: library) }
-        .animation(.easeOut(duration: 0.2), value: status == .onDevice)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("\(song.title), \(subtitle)")
         .accessibilityAddTraits(isSelected ? .isSelected : [])
@@ -98,67 +96,6 @@ struct SongRow: View {
 }
 
 /// Indicador del estado de sincronización a la derecha de cada fila.
-/// Estado de una canción con solo dos SF Symbols: `ipod` (ya está o va para allá)
-/// y `laptopcomputer` (solo en la Mac; es botón para enviar).
-struct SyncStatusView: View {
-    let status: SongSyncStatus
-    let canSend: Bool
-    let onSend: () -> Void
-
-    @State private var isHovering = false
-
-    var body: some View {
-        Group {
-            switch status {
-            case .onDevice:
-                Image(systemName: "ipod")
-                    .foregroundStyle(.white)
-                    .help("En el iPod")
-                    .accessibilityLabel("En el iPod")
-                    .transition(.opacity)
-
-            case .sending(let progress):
-                // El iPod en azul, latiendo, con un anillo que se llena.
-                Image(systemName: "ipod")
-                    .foregroundStyle(.tint)
-                    .symbolEffect(.pulse, options: .repeating)
-                    .padding(4)
-                    .overlay {
-                        Circle()
-                            .trim(from: 0, to: progress)
-                            .stroke(Color.accentColor, style: StrokeStyle(lineWidth: 2, lineCap: .round))
-                            .rotationEffect(.degrees(-90))
-                    }
-                    .help("Enviando · \(Int(progress * 100)) %")
-                    .accessibilityLabel("Enviando, \(Int(progress * 100)) por ciento")
-
-            case .queued:
-                Image(systemName: "ipod")
-                    .foregroundStyle(.tertiary)
-                    .help("En cola para el iPod")
-                    .accessibilityLabel("En cola")
-
-            case .notOnDevice:
-                // Solo en la Mac. Al pasar el mouse se pinta azul: clic para enviar.
-                Button(action: onSend) {
-                    Image(systemName: "laptopcomputer")
-                        .foregroundStyle(isHovering && canSend ? AnyShapeStyle(TintShapeStyle.tint)
-                                                               : AnyShapeStyle(HierarchicalShapeStyle.secondary))
-                        .frame(width: 26, height: 22)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .disabled(!canSend)
-                .onHover { isHovering = $0 }
-                .help(canSend ? "Solo en tu Mac · clic para enviar al iPod" : "Solo en tu Mac · conecta el iPod para enviar")
-                .accessibilityLabel("Solo en tu Mac, enviar al iPod")
-            }
-        }
-        .font(.system(size: 11))
-        .animation(.easeOut(duration: 0.2), value: status)
-    }
-}
-
 /// Menú contextual compartido por filas y portadas.
 struct SongContextMenu: View {
     let song: Song
@@ -209,15 +146,22 @@ struct SongArtworkView: View {
     var size: CGFloat? = 30
     var cornerRadius: CGFloat = 5
 
+    @Environment(\.displayScale) private var displayScale
+    @State private var image: CGImage?
+
+    /// Píxeles reales que ocupa (sin tamaño fijo = celda de cuadrícula, ~220 pt).
+    private var pixels: Int { Int((size ?? 220) * displayScale) }
+
     var body: some View {
         // Un cuadro que mide lo que le toca (o `size`) y la imagen se recorta adentro:
         // así una portada que no es cuadrada no empuja ni desborda la celda.
+        let imageID = song.artworkData.map(ArtworkThumbnailCache.imageID(for:))
         Color.clear
             .frame(width: size, height: size)
             .aspectRatio(1, contentMode: .fit)
             .overlay {
-                if let data = song.artworkData, let image = NSImage(data: data) {
-                    Image(nsImage: image)
+                if let image, imageID != nil {
+                    Image(decorative: image, scale: 1)
                         .resizable()
                         .interpolation(.high)
                         .scaledToFill()
@@ -227,7 +171,18 @@ struct SongArtworkView: View {
             }
             .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
             .accessibilityHidden(true)
+            // Miniatura reducida al tamaño real, fuera del hilo principal y en caché.
+            .task(id: ThumbnailRequest(imageID: imageID, pixels: pixels)) {
+                guard let data = song.artworkData, let imageID else { image = nil; return }
+                image = await ArtworkThumbnailCache.shared.thumbnail(for: data, imageID: imageID, maxPixels: pixels)
+            }
     }
+}
+
+/// Identidad de la carga de una miniatura: si cambia la portada o el tamaño, se vuelve a pedir.
+struct ThumbnailRequest: Hashable {
+    let imageID: Int?
+    let pixels: Int
 }
 
 #Preview("SongRow · filas de canción") {
@@ -240,17 +195,6 @@ struct SongArtworkView: View {
     }
     .padding()
     .frame(width: 480)
-}
-
-#Preview("SyncStatusView · los 4 estados") {
-    VStack(alignment: .trailing, spacing: 14) {
-        SyncStatusView(status: .notOnDevice, canSend: true) {}
-        SyncStatusView(status: .queued, canSend: true) {}
-        SyncStatusView(status: .sending(0.48), canSend: true) {}
-        SyncStatusView(status: .onDevice, canSend: true) {}
-    }
-    .frame(width: 140)
-    .padding()
 }
 
 #Preview("SongContextMenu · menú contextual (clic en el botón)") {

@@ -35,7 +35,8 @@ struct IndexedSongsList: View {
         return a.song.title.localizedCompare(b.song.title) == .orderedAscending
     }
 
-    private var sections: [(letter: String, songs: [Song])] {
+    /// `sorted` se calcula una sola vez en `body` y se pasa aquí (antes se ordenaba dos veces por render).
+    private func sections(_ sorted: [Song]) -> [(letter: String, songs: [Song])] {
         if isSearching {
             // Resultados: "Canciones" (por nombre), luego "Por artista", "Por álbum", "Por género".
             var result: [(letter: String, songs: [Song])] = []
@@ -61,18 +62,22 @@ struct IndexedSongsList: View {
         return result
     }
 
+    /// Se crea una vez (antes una por canción en cada render).
+    private static let spanish = Locale(identifier: "es")
+
     static func letter(for title: String) -> String {
         guard let first = title.first else { return "#" }
         let folded = String(first)
-            .folding(options: [.diacriticInsensitive, .caseInsensitive], locale: Locale(identifier: "es"))
+            .folding(options: [.diacriticInsensitive, .caseInsensitive], locale: spanish)
             .uppercased()
         guard let char = folded.first, char.isLetter, char.isASCII else { return "#" }
         return String(char)
     }
 
     var body: some View {
-        let groups = sections
-        let order = sorted.map(\.id)
+        let ordered = sorted
+        let groups = sections(ordered)
+        let order = ordered.map(\.id)
 
         ScrollViewReader { proxy in
             HStack(alignment: .top, spacing: 4) {

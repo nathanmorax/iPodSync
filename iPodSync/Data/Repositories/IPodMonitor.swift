@@ -195,12 +195,7 @@ final class IPodMonitor {
     /// Canciones del iPod sin portada cuya portada sí tenemos en la biblioteca de la Mac.
     private func missingArtworkJobs() -> [(dbid: UInt64, image: Data)] {
         guard let simulator else { return [] }
-        var images: [String: Data] = [:]
-        for song in simulator.songs {
-            if let data = song.artworkData {
-                images[IPodSimulator.matchKey(title: song.title, artist: song.artist)] = data
-            }
-        }
+        let images = simulator.artworkByKey
         return tracks.compactMap { track in
             guard !track.hasArtwork, track.dbid != 0,
                   let image = images[IPodSimulator.matchKey(title: track.title, artist: track.artist)] else { return nil }
@@ -212,11 +207,8 @@ final class IPodMonitor {
 
     /// Portada de la misma canción en la biblioteca de la Mac (más nítida que la del iPod).
     func macArtwork(for track: IPodTrack) -> Data? {
-        guard let simulator else { return nil }
-        let key = IPodSimulator.matchKey(title: track.title, artist: track.artist)
-        return simulator.songs.first {
-            $0.artworkData != nil && IPodSimulator.matchKey(title: $0.title, artist: $0.artist) == key
-        }?.artworkData
+        // Búsqueda directa en el índice (antes recorría todas las canciones de la Mac por cada portada).
+        simulator?.artworkByKey[IPodSimulator.matchKey(title: track.title, artist: track.artist)]
     }
 
     /// Pone en el iPod las portadas de las canciones que llegaron sin ella.

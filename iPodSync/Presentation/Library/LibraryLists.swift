@@ -159,9 +159,9 @@ struct ArtistHeader: View {
 // MARK: - Álbumes
 
 struct AlbumsGridView: View {
-    let songs: [Song]
+    /// Álbumes ya agrupados y ordenados (LibraryIndex.albums), calculados una vez en el panel.
+    let albums: [LibraryGroup<Song>]
     let simulator: IPodSimulator
-    var query: String = ""
     let onOpen: (Song) -> Void
 
     @AppStorage(SettingsKey.albumColumns) private var columnCount = 2
@@ -172,36 +172,18 @@ struct AlbumsGridView: View {
         Array(repeating: GridItem(.flexible(), spacing: 12, alignment: .top), count: max(2, min(3, columnCount)))
     }
 
-    /// Un cuadro por álbum (mismo álbum y artista), no uno por canción.
-    private var albums: [(key: String, songs: [Song])] {
-        let grouped = Dictionary(grouping: songs, by: \.albumKey)
-            .map { (key: $0.key, songs: $0.value.sorted(by: Song.albumOrder)) }
-        guard SearchMatch.isSearching(query) else {
-            return grouped.sorted { $0.songs[0].album.localizedCompare($1.songs[0].album) == .orderedAscending }
-        }
-        let q = query
-        func best(_ songs: [Song]) -> SearchMatch {
-            songs.map { $0.searchMatch(q) ?? SearchMatch.genre }.min() ?? SearchMatch.genre
-        }
-        return grouped.sorted { a, b in
-            let rankA = best(a.songs), rankB = best(b.songs)
-            if rankA != rankB { return rankA < rankB }
-            return a.songs[0].album.localizedCompare(b.songs[0].album) == .orderedAscending
-        }
-    }
-
     var body: some View {
         LazyVGrid(columns: columns, alignment: .leading, spacing: 18) {
-            ForEach(albums, id: \.key) { album in
-                let cover = album.songs[0]
+            ForEach(albums) { album in
+                let cover = album.items[0]
                 Button { onOpen(cover) } label: {
                     VStack(alignment: .leading, spacing: 6) {
-                        AlbumArtwork(song: cover, status: Self.albumStatus(album.songs, simulator))
+                        AlbumArtwork(song: cover)
                         VStack(alignment: .leading, spacing: 1) {
                             Text(cover.album)
                                 .font(.system(size: 12, weight: .semibold))
                                 .lineLimit(1)
-                            Text(album.songs.count == 1 ? cover.artist : "\(cover.artist) · \(album.songs.count) canciones")
+                            Text(album.items.count == 1 ? cover.artist : "\(cover.artist) · \(album.items.count) canciones")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                                 .lineLimit(1)
@@ -213,26 +195,26 @@ struct AlbumsGridView: View {
                 .buttonStyle(.plain)
                 .help("\(cover.album) — \(cover.artist)")
                 .contextMenu {
-                    let sendable = album.songs.filter(simulator.canSend).map(\.id)
-                    Button(album.songs.count == 1 ? "Enviar al iPod" : "Enviar álbum al iPod (\(sendable.count))") {
+                    let sendable = album.items.filter(simulator.canSend).map(\.id)
+                    Button(album.items.count == 1 ? "Enviar al iPod" : "Enviar álbum al iPod (\(sendable.count))") {
                         simulator.sendAll(sendable)
                     }
                     .disabled(sendable.isEmpty)
                     Divider()
-                    Button("Elegir de internet…", systemImage: "square.grid.2x2") { choosingArtworkFor = album.key }
-                    AlbumArtworkMenu(songs: album.songs, simulator: simulator)
+                    Button("Elegir de internet…", systemImage: "square.grid.2x2") { choosingArtworkFor = album.id }
+                    AlbumArtworkMenu(songs: album.items, simulator: simulator)
                 }
-                .popover(isPresented: Binding(get: { choosingArtworkFor == album.key },
+                .popover(isPresented: Binding(get: { choosingArtworkFor == album.id },
                                               set: { if !$0 { choosingArtworkFor = nil } }),
                          arrowEdge: .trailing) {
                     OnlineArtworkChooser(artist: cover.artist, album: cover.album) { data in
-                        simulator.setArtwork(data, forAlbum: album.key)
+                        simulator.setArtwork(data, forAlbum: album.id)
                         choosingArtworkFor = nil
                     }
                 }
-                .accessibilityLabel("\(cover.album), \(cover.artist), \(album.songs.count) canciones")
+                .accessibilityLabel("\(cover.album), \(cover.artist), \(album.items.count) canciones")
                 .accessibilityHint("Abre el álbum")
-                .id(album.key)   // destino del índice A–Z
+                .id(album.id)   // destino del índice A–Z
             }
         }
     }
@@ -251,7 +233,6 @@ struct AlbumsGridView: View {
 
 struct AlbumArtwork: View {
     let song: Song
-    let status: SongSyncStatus
 
     var body: some View {
         SongArtworkView(song: song, size: nil, cornerRadius: 8)
@@ -263,29 +244,6 @@ struct AlbumArtwork: View {
             }
 
             .shadow(color: .black.opacity(0.12), radius: 2, y: 1)
-    }
-
-    /// Insignia con los mismos dos símbolos: `ipod` (todo el álbum está en el iPod) o
-    /// `laptopcomputer` (le falta).
-    @ViewBuilder
-    private var badge: some View {
-        switch status {
-        case .onDevice:
-            symbolBadge("ipod", color: .white)
-                .help("Todo el álbum está en el iPod")
-        case .notOnDevice, .queued, .sending:
-            // Mientras no esté completo en el iPod, sigue siendo "de la Mac".
-            symbolBadge("laptopcomputer", color: .white.opacity(0.85))
-                .help("Faltan canciones de este álbum en el iPod")
-        }
-    }
-
-    private func symbolBadge(_ name: String, color: Color) -> some View {
-        Image(systemName: name)
-            .font(.system(size: 9, weight: .semibold))
-            .foregroundStyle(color)
-            .frame(width: 20, height: 18)
-            .background(.black.opacity(0.55), in: Capsule())
     }
 }
 
@@ -385,7 +343,7 @@ struct AlbumDetailView: View {
 #Preview("AlbumsGridView · cuadrícula de álbumes") {
     let sim = IPodSimulator()
     return ScrollView {
-        AlbumsGridView(songs: sim.songs, simulator: sim) { _ in }
+        AlbumsGridView(albums: LibraryIndex.albums(sim.songs, query: ""), simulator: sim) { _ in }
     }
     .frame(width: 420, height: 500)
     .padding()
@@ -393,10 +351,10 @@ struct AlbumDetailView: View {
 
 #Preview("AlbumArtwork · portada con estados") {
     HStack(spacing: 12) {
-        AlbumArtwork(song: MockLibrary.songs[0], status: .onDevice)
-        AlbumArtwork(song: MockLibrary.songs[1], status: .sending(0.48))
-        AlbumArtwork(song: MockLibrary.songs[2], status: .queued)
-        AlbumArtwork(song: MockLibrary.songs[4], status: .notOnDevice)
+        AlbumArtwork(song: MockLibrary.songs[0])
+        AlbumArtwork(song: MockLibrary.songs[1])
+        AlbumArtwork(song: MockLibrary.songs[2])
+        AlbumArtwork(song: MockLibrary.songs[4])
     }
     .frame(height: 110)
     .padding()

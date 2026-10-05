@@ -98,6 +98,6 @@ extension Song {
 enum SongSyncStatus: Equatable {
     case notOnDevice
     case queued
-    case sending(Double)
+    case sending
     case onDevice
 }

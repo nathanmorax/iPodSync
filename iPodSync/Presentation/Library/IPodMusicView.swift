@@ -97,16 +97,9 @@ struct IPodMusicView: View {
 
     // MARK: Artistas (círculos de 3 y página del artista)
 
+    /// Agrupado y ordenado por LibraryIndex (el rango de búsqueda se calcula una vez por grupo).
     private var artistGroups: [(artist: String, tracks: [IPodTrack])] {
-        let grouped = Dictionary(grouping: filtered, by: \.artist)
-            .map { (artist: $0.key.isEmpty ? "Artista desconocido" : $0.key, tracks: $0.value) }
-        return grouped.sorted { a, b in
-            if isSearching {
-                let rankA = bestMatch(a.tracks), rankB = bestMatch(b.tracks)
-                if rankA != rankB { return rankA < rankB }
-            }
-            return a.artist.localizedCompare(b.artist) == .orderedAscending
-        }
+        LibraryIndex.artists(filtered, query: query).map { (artist: $0.title, tracks: $0.items) }
     }
 
     private var artistsGrid: some View {
@@ -197,20 +190,9 @@ struct IPodMusicView: View {
     private typealias Album = (key: String, title: String, artist: String, tracks: [IPodTrack])
 
     private var albums: [Album] {
-        Dictionary(grouping: filtered) { "\($0.artist)|\($0.album)" }
-            .map { key, tracks in
-                let sorted = tracks.sorted { ($0.trackNumber, $0.title) < ($1.trackNumber, $1.title) }
-                let first = sorted[0]
-                return (key: key, title: first.album.isEmpty ? "Sin álbum" : first.album,
-                        artist: first.artist, tracks: sorted)
-            }
-            .sorted { a, b in
-                if isSearching {
-                    let rankA = bestMatch(a.tracks), rankB = bestMatch(b.tracks)
-                    if rankA != rankB { return rankA < rankB }
-                }
-                return a.title.localizedCompare(b.title) == .orderedAscending
-            }
+        LibraryIndex.albums(filtered, query: query).map {
+            (key: $0.id, title: $0.title, artist: $0.items[0].artist, tracks: $0.items)
+        }
     }
 
     private var albumsGrid: some View {
@@ -526,11 +508,20 @@ struct IPodArtworkView: View {
     /// Portada de la misma canción en tu Mac (más nítida que la del iPod, que es de 200×200 como máximo).
     var macArtwork: Data? = nil
 
+    @Environment(\.displayScale) private var displayScale
     @State private var image: CGImage?
 
     private var corner: CGFloat { (size ?? 48) * 0.17 }
-    /// Píxeles que necesitamos (pantalla Retina = ×2).
-    private var neededPixels: Int { Int((size ?? 200) * 2) }
+    /// Píxeles reales que ocupa (según la pantalla, no un ×2 fijo).
+    private var neededPixels: Int { Int((size ?? 200) * displayScale) }
+
+    /// Qué cargar: cambia si cambia la pista, el tamaño, la portada de la Mac o el almacén del iPod.
+    private struct LoadKey: Hashable {
+        let dbid: UInt64
+        let pixels: Int
+        let macImage: Int?
+        let store: ObjectIdentifier?
+    }
 
     var body: some View {
         // El cuadro mide lo que le toca y la imagen se recorta adentro: no desborda la celda.
@@ -538,12 +529,7 @@ struct IPodArtworkView: View {
             .frame(width: size, height: size)
             .aspectRatio(1, contentMode: .fit)
             .overlay {
-                if let data = macArtwork, let mac = NSImage(data: data) {
-                    Image(nsImage: mac)
-                        .resizable()
-                        .interpolation(.high)
-                        .scaledToFill()
-                } else if let image {
+                if let image {
                     Image(decorative: image, scale: 1)
                         .resizable()
                         .interpolation(.high)
@@ -566,10 +552,20 @@ struct IPodArtworkView: View {
                     .strokeBorder(.black.opacity(0.10), lineWidth: 0.5)
             )
             .accessibilityHidden(true)
-            // Incluye el almacén de portadas: al cambiar una portada se crea uno nuevo y se vuelve a cargar.
-            .task(id: "\(track.dbid)-\(neededPixels)-\(artwork.map { ObjectIdentifier($0).hashValue } ?? 0)") {
-                guard macArtwork == nil, let artwork else { return }
-                let loaded = await artwork.image(for: track.dbid, minPixels: neededPixels)
+            // La portada de la Mac (más nítida) se reduce en la caché; si no hay, la del iPod.
+            // Incluye el almacén: al cambiar una portada del iPod se crea uno nuevo y se vuelve a cargar.
+            .task(id: LoadKey(dbid: track.dbid, pixels: neededPixels,
+                              macImage: macArtwork.map(ArtworkThumbnailCache.imageID(for:)),
+                              store: artwork.map(ObjectIdentifier.init))) {
+                let loaded: CGImage?
+                if let mac = macArtwork {
+                    loaded = await ArtworkThumbnailCache.shared.thumbnail(
+                        for: mac, imageID: ArtworkThumbnailCache.imageID(for: mac), maxPixels: neededPixels)
+                } else if let artwork {
+                    loaded = await artwork.image(for: track.dbid, minPixels: neededPixels)
+                } else {
+                    loaded = nil
+                }
                 withAnimation(.easeOut(duration: 0.15)) { image = loaded }
             }
     }

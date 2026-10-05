@@ -24,6 +24,9 @@ struct MacLibraryPanel: View {
 
     private var visible: [Song] {
         if isMac {
+            // Con "Todas" no se pregunta el estado de cada canción: así el panel no depende
+            // de la cola de envíos y no se recalcula con cada canción que se manda.
+            guard library.statusFilter != .all else { return library.filter(simulator.songs) }
             return library.filter(simulator.songs).filter { library.statusFilter.matches(simulator.status(of: $0)) }
         }
         // iPod simulado: las canciones que ya están en el iPod.
@@ -347,7 +350,15 @@ struct MacLibraryPanel: View {
     private var content: some View {
         if showsIPodMusic {
             IPodMusicView(monitor: monitor, library: library, scope: library.scope, query: library.query)
-        } else if visible.isEmpty {
+        } else {
+            // Se filtra una sola vez por render y se pasa a la lista que toque.
+            libraryContent(visible)
+        }
+    }
+
+    @ViewBuilder
+    private func libraryContent(_ visible: [Song]) -> some View {
+        if visible.isEmpty {
             emptyState
         } else {
             switch library.scope {
@@ -362,15 +373,18 @@ struct MacLibraryPanel: View {
                     }
                     .transition(.move(edge: .trailing).combined(with: .opacity))
                 } else {
-                    AlphabetIndexedScroll(entries: artistEntries, showsIndex: !isSearching) {
-                        ArtistsGridView(songs: visible, simulator: simulator, query: library.query) { artist in
+                    // Agrupado y ordenado una vez: lo usan la cuadrícula y el índice A–Z.
+                    let artists = LibraryIndex.artists(visible, query: library.query)
+                    AlphabetIndexedScroll(entries: LibraryIndex.indexEntries(artists), showsIndex: !isSearching) {
+                        ArtistsGridView(groups: artists, simulator: simulator) { artist in
                             withAnimation(.easeInOut(duration: 0.25)) { library.openArtist = artist }
                         }
                     }
                     .transition(.opacity)
                 }
             case .albums:
-                AlphabetIndexedScroll(entries: albumEntries,
+                let albums = LibraryIndex.albums(visible, query: library.query)
+                AlphabetIndexedScroll(entries: LibraryIndex.indexEntries(albums),
                                       showsIndex: !isSearching && library.selectedAlbumID == nil) {
                     if let id = library.selectedAlbumID,
                        let song = simulator.songs.first(where: { $0.id == id }) {
@@ -378,7 +392,7 @@ struct MacLibraryPanel: View {
                             library.selectedAlbumID = nil
                         }
                     } else {
-                        AlbumsGridView(songs: visible, simulator: simulator, query: library.query) { song in
+                        AlbumsGridView(albums: albums, simulator: simulator) { song in
                             library.selectedAlbumID = song.id
                         }
                     }
@@ -390,20 +404,6 @@ struct MacLibraryPanel: View {
     // MARK: Índice A–Z (Artistas y Álbumes)
 
     private var isSearching: Bool { SearchMatch.isSearching(library.query) }
-
-    /// Artistas en el orden en que se ven (alfabético cuando no buscas).
-    private var artistEntries: [(id: String, title: String)] {
-        Set(visible.map(\.artist))
-            .sorted { $0.localizedCompare($1) == .orderedAscending }
-            .map { (id: $0, title: $0) }
-    }
-
-    /// Álbumes en el orden de la cuadrícula (por nombre del álbum).
-    private var albumEntries: [(id: String, title: String)] {
-        Dictionary(grouping: visible, by: \.albumKey)
-            .map { (id: $0.key, title: $0.value[0].album) }
-            .sorted { $0.title.localizedCompare($1.title) == .orderedAscending }
-    }
 
     @ViewBuilder
     private var emptyState: some View {

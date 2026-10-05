@@ -21,7 +21,14 @@ final class IPodSimulator {
     /// Filas que caben en la pantalla del iPod.
     static let visibleRows = 7
 
-    var songs: [Song]
+    var songs: [Song] {
+        didSet { rebuildArtworkIndex() }
+    }
+    /// Portada de cada canción de la Mac por "título|artista". Antes cada portada del iPod
+    /// buscaba recorriendo todas las canciones (cientos de miles de comparaciones por render).
+    private(set) var artworkByKey: [String: Data] = [:]
+    /// Para no reasignar (y redibujar) el índice si las portadas no cambiaron.
+    @ObservationIgnored private var artworkSignature = 0
     var backlightOn = false
     private(set) var isConnected = true
     /// true = iPod de prueba (Ajustes › Simular un iPod). false = sigue al iPod real conectado.
@@ -52,6 +59,9 @@ final class IPodSimulator {
     private(set) var recentIDs: [Song.ID]
     private(set) var nav: [NavEntry] = [NavEntry(screen: .main)]
     private(set) var transfer: TransferState?
+    /// Progreso de la canción en curso. Es `let`: leer `simulator.transferProgress` no suscribe
+    /// a la vista; solo quien lea `.value` (la barra del LCD) se redibuja con cada avance.
+    let transferProgress = TransferProgress()
     private(set) var queue: [Song.ID] = []
 
     private var transferTask: Task<Void, Never>?
@@ -64,6 +74,23 @@ final class IPodSimulator {
         self.otherUsedGB = MockLibrary.capacityGB - MockLibrary.initialFreeGB - musicGB
         // Biblioteca real guardada (se usa al cambiar al iPod real).
         self.otherLibrary = MacLibraryStore.load()
+        rebuildArtworkIndex()
+    }
+
+    private func rebuildArtworkIndex() {
+        var signature = Hasher()
+        var index: [String: Data] = [:]
+        for song in songs {
+            guard let data = song.artworkData else { continue }
+            let key = Self.matchKey(title: song.title, artist: song.artist)
+            index[key] = data
+            signature.combine(key)
+            signature.combine(data)   // tamaño + primeros bytes: barato y detecta portadas nuevas
+        }
+        let value = signature.finalize()
+        guard value != artworkSignature else { return }
+        artworkSignature = value
+        artworkByKey = index
     }
 
     // MARK: - Datos derivados
@@ -181,7 +208,7 @@ final class IPodSimulator {
 
     func status(of song: Song) -> SongSyncStatus {
         if isOnIPod(song) { return .onDevice }
-        if let transfer, transfer.song.id == song.id, !transfer.finished { return .sending(transfer.progress) }
+        if let transfer, transfer.songID == song.id, !transfer.finished { return .sending }
         if queue.contains(song.id) { return .queued }
         return .notOnDevice
     }
@@ -407,9 +434,10 @@ final class IPodSimulator {
                 guard let song = songs.first(where: { $0.id == id }) else { continue }
                 position += 1
 
+                transferProgress.value = 0
                 withAnimation(.easeOut(duration: 0.2)) {
-                    transfer = TransferState(song: song, position: position,
-                                             total: position + queue.count, progress: 0)
+                    transfer = TransferState(songID: song.id, title: song.title, position: position,
+                                             total: position + queue.count)
                 }
 
                 if !isSimulated, let realSender {
@@ -418,9 +446,13 @@ final class IPodSimulator {
                     do {
                         try await realSender(song) { [weak self] value in
                             Task { @MainActor in
-                                guard let self, self.transfer?.song.id == id else { return }
-                                self.transfer?.progress = value
-                                self.transfer?.total = current + self.queue.count
+                                guard let self, self.transfer?.songID == id else { return }
+                                // Solo avances de 1 % o más (llegan muchos por segundo).
+                                if value >= 1 || abs(value - self.transferProgress.value) >= 0.01 {
+                                    self.transferProgress.value = value
+                                }
+                                let total = current + self.queue.count
+                                if self.transfer?.total != total { self.transfer?.total = total }
                             }
                         }
                     } catch {
@@ -446,8 +478,9 @@ final class IPodSimulator {
                     for step in 1...steps {
                         try? await Task.sleep(for: .seconds(duration / Double(steps)))
                         guard isCurrent() else { return }
-                        transfer?.progress = Double(step) / Double(steps)
-                        transfer?.total = position + queue.count
+                        transferProgress.value = Double(step) / Double(steps)
+                        let total = position + queue.count
+                        if transfer?.total != total { transfer?.total = total }
                     }
                 }
 
