@@ -35,10 +35,6 @@ struct IPodMusicView: View {
 
     private var isSearching: Bool { SearchMatch.isSearching(query) }
 
-    private func bestMatch(_ tracks: [IPodTrack]) -> SearchMatch {
-        tracks.compactMap { $0.searchMatch(query) }.min() ?? .genre
-    }
-
     var body: some View {
         if monitor.device == nil {
             ContentUnavailableView("Conecta tu iPod",
@@ -228,13 +224,9 @@ struct IPodMusicView: View {
                         IPodAlbumArtworkMenu(albumKey: album.key, title: album.title, artist: album.artist,
                                              tracks: album.tracks, monitor: monitor)
                     }
-                    .popover(isPresented: Binding(get: { choosingArtworkFor == album.key },
-                                                  set: { if !$0 { choosingArtworkFor = nil } }),
-                             arrowEdge: .trailing) {
-                        OnlineArtworkChooser(artist: album.artist, album: album.title) { data in
-                            monitor.replaceArtwork(albumKey: album.key, tracks: album.tracks, imageData: data)
-                            choosingArtworkFor = nil
-                        }
+                    .artworkChooserPopover(for: album.key, presented: $choosingArtworkFor,
+                                           artist: album.artist, album: album.title) { data in
+                        monitor.replaceArtwork(albumKey: album.key, tracks: album.tracks, imageData: data)
                     }
                     .overlay(alignment: .top) {
                         if monitor.updatingArtworkAlbums.contains(album.key) {
@@ -295,26 +287,17 @@ struct IPodMusicView: View {
         }
     }
 
-    // MARK: Lista
+    // MARK: Lista de canciones (Artistas y Álbumes usan cuadrículas)
 
     private var sections: [(key: String, tracks: [IPodTrack])] {
-        switch scope {
-        case .songs:
-            if isSearching {
-                // Resultados: "Canciones" (por nombre), luego "Por artista", "Por álbum", "Por género".
-                return group(filtered) { ($0.searchMatch(query) ?? .genre).sectionTitle }
-            }
-            return group(filtered) { IndexedSongsList.letter(for: $0.title) }
-        case .artists:
-            return group(isSearching ? filtered
-                         : filtered.sorted { ($0.artist, $0.album, $0.trackNumber) < ($1.artist, $1.album, $1.trackNumber) }) { $0.artist }
-        case .albums:
-            return group(filtered.sorted { ($0.album, $0.trackNumber, $0.title) < ($1.album, $1.trackNumber, $1.title) }) {
-                $0.album.isEmpty ? "Sin álbum" : $0.album
-            }
+        if isSearching {
+            // Resultados: "Canciones" (por nombre), luego "Por artista", "Por álbum", "Por género".
+            return group(filtered) { ($0.searchMatch(query) ?? .genre).sectionTitle }
         }
+        return group(filtered) { IndexedSongsList.letter(for: $0.title) }
     }
 
+    /// Agrupa en orden de aparición (las pistas ya vienen ordenadas).
     private func group(_ tracks: [IPodTrack], by key: (IPodTrack) -> String) -> [(key: String, tracks: [IPodTrack])] {
         var result: [(key: String, tracks: [IPodTrack])] = []
         var index: [String: Int] = [:]
@@ -327,18 +310,6 @@ struct IPodMusicView: View {
                 result.append((key: k, tracks: [track]))
             }
         }
-        if scope != .songs {
-            if isSearching {
-                // El artista/álbum con la mejor coincidencia primero.
-                result.sort { a, b in
-                    let rankA = bestMatch(a.tracks), rankB = bestMatch(b.tracks)
-                    if rankA != rankB { return rankA < rankB }
-                    return a.key.localizedCompare(b.key) == .orderedAscending
-                }
-            } else {
-                result.sort { $0.key.localizedCompare($1.key) == .orderedAscending }
-            }
-        }
         return result
     }
 
@@ -349,34 +320,23 @@ struct IPodMusicView: View {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
                         ForEach(groups, id: \.key) { group in
-                            // Mientras buscas, todos los artistas se ven abiertos.
-                            let collapsed = scope == .artists && query.trimmingCharacters(in: .whitespaces).isEmpty
-                                && !library.expandedIPodArtists.contains(group.key)
                             Section {
-                                if !collapsed {
-                                    ForEach(group.tracks) { track in
-                                        IPodTrackRow(track: track, subtitle: subtitle(for: track), artwork: monitor.artwork)
-                                        Divider().padding(.leading, 52)
-                                    }
+                                ForEach(group.tracks) { track in
+                                    IPodTrackRow(track: track, subtitle: subtitle(for: track), artwork: monitor.artwork)
+                                    Divider().padding(.leading, 52)
                                 }
                             } header: {
-                                header(group.key, count: group.tracks.count,
-                                       expanded: !collapsed, allKeys: groups.map(\.key))
+                                sectionHeader(group.key)
                                     .id(group.key)
                             }
                         }
                     }
                 }
-
                 .scrollIndicators(isSearching ? .automatic : .hidden)
 
                 if !isSearching {
-                    // Canciones: las secciones ya son letras. Artistas: la letra lleva al primer artista.
-                    let targets = Dictionary(groups.map { (IndexedSongsList.letter(for: $0.key), $0.key) },
-                                             uniquingKeysWith: { first, _ in first })
-                    AlphabetIndex(available: Set(targets.keys)) { letter in
-                        guard let key = targets[letter] else { return }
-                        withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(key, anchor: .top) }
+                    AlphabetIndex(available: Set(groups.map(\.key))) { letter in
+                        withAnimation(.easeOut(duration: 0.2)) { proxy.scrollTo(letter, anchor: .top) }
                     }
                 }
             }
@@ -384,57 +344,20 @@ struct IPodMusicView: View {
     }
 
     private func subtitle(for track: IPodTrack) -> String {
-        switch scope {
-        case .songs:   return track.album.isEmpty ? track.artist : "\(track.artist) · \(track.album)"
-        case .artists: return track.album.isEmpty ? track.sizeText : track.album
-        case .albums:  return track.artist
-        }
+        track.album.isEmpty ? track.artist : "\(track.artist) · \(track.album)"
     }
 
-    @ViewBuilder
-    private func header(_ title: String, count: Int, expanded: Bool, allKeys: [String]) -> some View {
-        if scope == .artists {
-            Button {
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    library.toggleArtist(title, in: \.expandedIPodArtists, all: allKeys)
-                }
-            } label: {
-                headerContent(title, count: count, expanded: expanded)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .help(expanded ? "Cerrar (⌥ clic: cerrar todos)" : "Abrir (⌥ clic: abrir todos)")
-            .accessibilityValue(expanded ? "Abierto" : "Cerrado")
-        } else {
-            headerContent(title, count: count, expanded: true)
-        }
-    }
-
-    private func headerContent(_ title: String, count: Int, expanded: Bool) -> some View {
-        HStack {
-            if scope == .artists {
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 9, weight: .bold))
-                    .foregroundStyle(.secondary)
-                    .rotationEffect(.degrees(expanded ? 90 : 0))
-                    .frame(width: 10)
-                    .accessibilityHidden(true)
-            }
-            Text(title)
-                .font(.system(size: scope == .songs ? 11 : 12, weight: .bold))
-                .foregroundStyle(scope == .songs ? AnyShapeStyle(TintShapeStyle.tint) : AnyShapeStyle(HierarchicalShapeStyle.primary))
-                .lineLimit(1)
-            Spacer()
-            if scope != .songs {
-                Text(count == 1 ? "1 canción" : "\(count) canciones")
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
-            }
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, scope == .songs ? 4 : 6)
-        .background(.thinMaterial)
-        .accessibilityAddTraits(.isHeader)
+    /// Letra (o "Por artista", "Por álbum"… al buscar) fija arriba de su sección.
+    private func sectionHeader(_ title: String) -> some View {
+        Text(title)
+            .font(.system(size: 11, weight: .bold))
+            .foregroundStyle(.tint)
+            .lineLimit(1)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 4)
+            .background(.thinMaterial)
+            .accessibilityAddTraits(.isHeader)
     }
 }
 

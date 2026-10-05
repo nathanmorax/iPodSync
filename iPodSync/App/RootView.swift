@@ -22,9 +22,7 @@ struct RootView: View {
         EmulatorView(simulator: simulator, library: library, monitor: monitor)
             .frame(width: 800, height: 760)
             .navigationTitle("iPodSync")
-            // Sin fondo de ventana: solo flotan el iPod y los paneles sobre el escritorio.
-            .containerBackground(.clear, for: .window)
-            .background(TransparentWindow())
+            // La ventana transparente y sin marco la pone EmulatorWindow (AppKit).
             // Ventana de "Abrir" suelta, no como hoja: con la ventana transparente,
             // la hoja oscurece todo el rectángulo de la ventana y se ve un fondo negro.
             .onChange(of: library.isImporting) { _, isImporting in

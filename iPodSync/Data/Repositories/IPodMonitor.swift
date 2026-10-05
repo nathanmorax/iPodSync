@@ -126,7 +126,7 @@ final class IPodMonitor {
 
     /// ¿Hay un respaldo hecho con iPodSync para este iPod?
     private func hasBackup(for deviceID: String) -> Bool {
-        let all = UserDefaults.standard.dictionary(forKey: "lastIPodBackups") as? [String: Date]
+        let all = UserDefaults.standard.dictionary(forKey: SettingsKey.lastIPodBackups) as? [String: Date]
         return all?[deviceID] != nil
     }
 
@@ -274,48 +274,45 @@ final class IPodMonitor {
 
         updatingArtworkAlbums.insert(albumKey)
         Task {
-            let failed: Int = await Task.detached(priority: .userInitiated) {
-                // Espera su turno si se están enviando canciones u otra portada.
-                (try? await IPodWriteLock.shared.run {
-                    var bad = 0
-                    for dbid in dbids {
-                        do {
-                            try IPodArtworkWriter.addArtwork(volume: volume, dbid: dbid, imageData: image)
-                        } catch {
-                            print("Portada: \(error.localizedDescription)")
-                            bad += 1
+            let (failed, firstError): (Int, String?) = await Task.detached(priority: .userInitiated) {
+                do {
+                    // Espera su turno si se están enviando canciones u otra portada.
+                    return try await IPodWriteLock.shared.run {
+                        var bad = 0
+                        var first: String?
+                        for dbid in dbids {
+                            do {
+                                try IPodArtworkWriter.addArtwork(volume: volume, dbid: dbid, imageData: image)
+                            } catch {
+                                print("[Portada] dbid \(dbid): \(error.localizedDescription)")
+                                bad += 1
+                                if first == nil { first = error.localizedDescription }
+                            }
                         }
+                        return (bad, first)
                     }
-                    return bad
-                }) ?? dbids.count
+                } catch {
+                    return (dbids.count, error.localizedDescription)
+                }
             }.value
             updatingArtworkAlbums.remove(albumKey)
-            reloadTracks()
-            if failed > 0 {
-                alertMessage = "No se pudo cambiar la portada de \(failed) de \(dbids.count) canciones."
-            }
-        }
-    }
 
-    /// Busca la portada del álbum en internet y la pone en el iPod si el álbum y el artista coinciden.
-    /// Devuelve false si no encontró una que coincida bien.
-    @discardableResult
-    func fetchArtworkFromInternet(albumKey: String, title: String, artist: String, tracks: [IPodTrack]) async -> Bool {
-        updatingArtworkAlbums.insert(albumKey)
-        let data: Data?
-        do {
-            if let match = try await ArtworkLookup.bestMatch(artist: artist, album: title) {
-                data = try await ArtworkLookup.download(match)
-            } else {
-                data = nil
+            // Si estas canciones también están en tu Mac, la app mostraba la portada de la Mac
+            // (es más nítida) y parecía que el cambio en el iPod no había funcionado.
+            // Ahora la de la Mac se cambia igual, para que las dos coincidan.
+            if failed < dbids.count {
+                simulator?.setArtwork(imageData, matching: tracks)
             }
-        } catch {
-            data = nil
+            reloadTracks()
+
+            if failed > 0 {
+                var message = failed == dbids.count
+                    ? "No se pudo cambiar la portada en el iPod."
+                    : "No se pudo cambiar la portada de \(failed) de \(dbids.count) canciones."
+                if let firstError { message += "\n\n\(firstError)" }
+                alertMessage = message
+            }
         }
-        updatingArtworkAlbums.remove(albumKey)
-        guard let data else { return false }
-        replaceArtwork(albumKey: albumKey, tracks: tracks, imageData: data)
-        return true
     }
 
     // MARK: - Música del iPod

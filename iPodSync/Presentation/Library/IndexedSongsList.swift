@@ -6,7 +6,6 @@
 //
 
 import SwiftUI
-import UniformTypeIdentifiers
 
 struct IndexedSongsList: View {
     let songs: [Song]

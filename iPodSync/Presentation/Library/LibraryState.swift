@@ -12,7 +12,7 @@ import Observation
 @MainActor
 @Observable
 final class LibraryState {
-    private static let scopeKey = "libraryScope"
+    private static let scopeKey = SettingsKey.libraryScope
 
     var scope: LibraryScope {
         didSet {
@@ -45,34 +45,15 @@ final class LibraryState {
     var openIPodArtist: String?
     /// Álbum abierto en "En el iPod" (clave artista|álbum).
     var openIPodAlbum: String?
-    /// Artistas cerrados en la vista Artistas (Mac y iPod por separado).
-    /// Artistas abiertos en la vista Artistas (Mac y iPod por separado). Al inicio todos cerrados.
-    var expandedArtists: Set<String> = []
-    var expandedIPodArtists: Set<String> = []
     var isImporting = false
 
     /// Canciones seleccionadas con clic, ⌘‑clic o ⇧‑clic.
     var selection: Set<Song.ID> = []
-    private var anchor: Song.ID?
+    @ObservationIgnored private var anchor: Song.ID?
 
     init() {
         let saved = UserDefaults.standard.string(forKey: Self.scopeKey)
         scope = saved.flatMap(LibraryScope.init(rawValue:)) ?? .artists
-    }
-
-    /// Abre o cierra un artista. Con ⌥ (Opción) abre o cierra todos, como en el Finder.
-    func toggleArtist(_ name: String,
-                      in keyPath: ReferenceWritableKeyPath<LibraryState, Set<String>>,
-                      all names: [String]) {
-        // El conjunto guarda los artistas abiertos.
-        let expand = !self[keyPath: keyPath].contains(name)
-        if NSEvent.modifierFlags.contains(.option) {
-            self[keyPath: keyPath] = expand ? Set(names) : []
-        } else if expand {
-            self[keyPath: keyPath].insert(name)
-        } else {
-            self[keyPath: keyPath].remove(name)
-        }
     }
 
     func filter(_ songs: [Song]) -> [Song] {

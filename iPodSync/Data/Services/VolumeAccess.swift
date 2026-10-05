@@ -9,7 +9,7 @@
 import Foundation
 
 enum VolumeAccess {
-    private static let defaultsKey = "iPodVolumeBookmarks"
+    private static let defaultsKey = SettingsKey.iPodVolumeBookmarks
 
     private static var all: [String: Data] {
         get { UserDefaults.standard.dictionary(forKey: defaultsKey) as? [String: Data] ?? [:] }

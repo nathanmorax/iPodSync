@@ -93,18 +93,6 @@ struct ArtistPageHeader<Artwork: View, Accessory: View>: View {
     }
 }
 
-/// "ÁLBUMES", "CANCIONES".
-struct ArtistSectionTitle: View {
-    let text: String
-    var body: some View {
-        Text(text)
-            .font(.system(size: 11, weight: .semibold))
-            .tracking(0.4)
-            .foregroundStyle(.secondary)
-            .accessibilityAddTraits(.isHeader)
-    }
-}
-
 /// Encabezado de un álbum dentro de la página del artista: portada, nombre, año y canciones.
 struct ArtistAlbumSectionHeader<Artwork: View, Accessory: View>: View {
     let title: String
@@ -144,34 +132,6 @@ struct ArtistAlbumSectionHeader<Artwork: View, Accessory: View>: View {
         .padding(.top, 4)
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isHeader)
-    }
-}
-
-/// Un álbum en la fila horizontal de la página del artista.
-struct ArtistAlbumTile<Artwork: View>: View {
-    let title: String
-    let year: Int?
-    let artwork: Artwork
-
-    init(title: String, year: Int?, @ViewBuilder artwork: () -> Artwork) {
-        self.title = title
-        self.year = year
-        self.artwork = artwork()
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            artwork
-                .frame(width: 96, height: 96)
-            Text(title)
-                .font(.system(size: 11, weight: .semibold))
-                .lineLimit(1)
-            Text(year.map(String.init) ?? " ")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-        }
-        .frame(width: 96, alignment: .leading)
-        .contentShape(Rectangle())
     }
 }
 

@@ -368,6 +368,17 @@ final class IPodSimulator {
         if !isSimulated { MacLibraryStore.save(songs) }
     }
 
+    /// Pone la portada en las canciones de la Mac que son las mismas que estas del iPod
+    /// (mismo título y artista). Así la portada cambiada en el iPod también se ve en la app.
+    func setArtwork(_ imageData: Data, matching tracks: [IPodTrack]) {
+        let keys = Set(tracks.map { Self.matchKey(title: $0.title, artist: $0.artist) })
+        let indices = songs.indices.filter { keys.contains(Self.matchKey(title: songs[$0].title, artist: songs[$0].artist)) }
+        guard !indices.isEmpty else { return }
+        let image = MacLibraryImporter.thumbnail(imageData) ?? imageData
+        for index in indices { songs[index].artworkData = image }
+        if !isSimulated { MacLibraryStore.save(songs) }
+    }
+
     /// Álbumes buscando portada en internet ahora mismo (para mostrar un indicador).
     private(set) var fetchingArtwork: Set<String> = []
     /// Aviso al terminar de buscar portadas.

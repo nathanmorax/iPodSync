@@ -43,7 +43,7 @@ final class BackupViewModel {
 
     // MARK: - Último respaldo (se recuerda por iPod)
 
-    private static let lastBackupKey = "lastIPodBackups"
+    private static let lastBackupKey = SettingsKey.lastIPodBackups
 
     func lastBackupDate(for deviceID: String) -> Date? {
         let all = UserDefaults.standard.dictionary(forKey: Self.lastBackupKey) as? [String: Date]
