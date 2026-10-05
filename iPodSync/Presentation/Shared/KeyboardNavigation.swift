@@ -30,8 +30,12 @@ struct KeyboardNavigation: ViewModifier {
 
     /// Devuelve `true` si la tecla se consumió.
     private func handle(_ event: NSEvent) -> Bool {
+        // Solo en la ventana del emulador y sin nada encima: en alertas, hojas (Respaldo)
+        // y Ajustes, Return/Esc/flechas son de esos botones, no del iPod.
+        guard let window = event.window, window is EmulatorWindow,
+              window.attachedSheet == nil, NSApp.modalWindow == nil else { return false }
         // Si el usuario está escribiendo (p. ej. en el buscador), no interceptar.
-        if event.window?.firstResponder is NSText { return false }
+        if window.firstResponder is NSText { return false }
         guard event.modifierFlags.intersection([.command, .option, .control]).isEmpty else { return false }
 
         switch event.keyCode {

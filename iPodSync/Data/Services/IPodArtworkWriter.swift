@@ -131,24 +131,30 @@ nonisolated enum IPodArtworkWriter {
         try replace(artDB, with: Data(db), keeping: original)
 
         // 3. Marcar la canción en iTunesDB.
+        let tunesDB = volume.appendingPathComponent("iPod_Control/iTunes/iTunesDB")
+        let tunesOriginal: Data
         do {
-            try markTrack(volume: volume, dbid: dbid, imageID: imageID, imageSize: UInt32(imageData.count))
+            tunesOriginal = try markTrack(volume: volume, dbid: dbid, imageID: imageID,
+                                          imageSize: UInt32(imageData.count))
         } catch {
-            try? Data(original).write(to: artDB)                 // dejar todo como estaba
+            try? original.write(to: artDB, options: .atomic)     // dejar todo como estaba
             throw error
         }
 
-        // Comprobar.
+        // Comprobar. Si falla se regresan LAS DOS bases: antes solo ArtworkDB, y iTunesDB quedaba
+        // diciendo "tiene portada" con una imagen que ya no existía.
         guard (try? ArtworkDBReader.readIndex(volume: volume))?[dbid] != nil else {
-            try? fm.removeItem(at: artDB)
-            try? original.write(to: artDB)
+            try? original.write(to: artDB, options: .atomic)
+            try? tunesOriginal.write(to: tunesDB, options: .atomic)
             throw ArtworkError.verifyFailed
         }
     }
 
     // MARK: - iTunesDB: marcar la canción
 
-    private static func markTrack(volume: URL, dbid: UInt64, imageID: UInt32, imageSize: UInt32) throws {
+    /// Devuelve la iTunesDB como estaba antes, para poder regresarla si algo falla después.
+    @discardableResult
+    private static func markTrack(volume: URL, dbid: UInt64, imageID: UInt32, imageSize: UInt32) throws -> Data {
         let url = volume.appendingPathComponent("iPod_Control/iTunes/iTunesDB")
         let original = try Data(contentsOf: url)
         var db = [UInt8](original)
@@ -184,6 +190,7 @@ nonisolated enum IPodArtworkWriter {
         }
         guard found else { throw ArtworkError.trackNotFound }
         try replace(url, with: Data(db), keeping: original)
+        return original
     }
 
     // MARK: - Lectura de ArtworkDB

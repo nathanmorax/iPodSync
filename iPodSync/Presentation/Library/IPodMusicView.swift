@@ -302,11 +302,11 @@ struct IPodMusicView: View {
                 }
 
                 VStack(spacing: 0) {
+                    // Igual que en la página del artista: número, título y duración a la derecha.
                     ForEach(Array(album.tracks.enumerated()), id: \.element.id) { index, track in
-                        if index > 0 { Divider().padding(.leading, 52) }
-                        IPodTrackRow(track: track,
-                                     subtitle: "\(track.trackNumber > 0 ? track.trackNumber : index + 1) · \(track.artist)",
-                                     artwork: monitor.artwork)
+                        if index > 0 { Divider().padding(.leading, 42) }
+                        IPodTrackRow(track: track, subtitle: "", artwork: monitor.artwork,
+                                     number: track.trackNumber > 0 ? track.trackNumber : index + 1)
                     }
                 }
             }

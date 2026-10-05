@@ -52,6 +52,7 @@ final class IPodMonitor {
             try await self.writeToIPod(song, progress: progress)
         }
         simulator.onRealQueueFinished = { [weak self] in self?.reloadTracks() }
+        if let problem = MacLibraryStore.takeLoadProblem() { alertMessage = problem }
         guard observers.isEmpty else { rescan(); return }
 
         let center = NSWorkspace.shared.notificationCenter
@@ -161,18 +162,21 @@ final class IPodMonitor {
 
         let artwork = song.artworkData
         let work = Task.detached(priority: .userInitiated) {
-            let didAccess = source.startAccessingSecurityScopedResource()
-            defer { if didAccess { source.stopAccessingSecurityScopedResource() } }
-            let realSize = (try? source.resourceValues(forKeys: [.fileSizeKey]))?.fileSize.map(Int64.init)
-            var exact = track
-            if let realSize { exact.sizeBytes = realSize }
-            let added = try IPodTrackWriter.add(source: source, track: exact, volume: volume, progress: progress)
-            // La portada es un extra: si falla, la canción ya quedó bien en el iPod.
-            if let artwork {
-                do {
-                    try IPodArtworkWriter.addArtwork(volume: volume, dbid: added.dbid, imageData: artwork)
-                } catch {
-                    print("No se pudo poner la portada de \(exact.title): \(error.localizedDescription)")
+            // Una escritura a la vez en la base del iPod (ver IPodWriteLock).
+            try await IPodWriteLock.shared.run {
+                let didAccess = source.startAccessingSecurityScopedResource()
+                defer { if didAccess { source.stopAccessingSecurityScopedResource() } }
+                let realSize = (try? source.resourceValues(forKeys: [.fileSizeKey]))?.fileSize.map(Int64.init)
+                var exact = track
+                if let realSize { exact.sizeBytes = realSize }
+                let added = try IPodTrackWriter.add(source: source, track: exact, volume: volume, progress: progress)
+                // La portada es un extra: si falla, la canción ya quedó bien en el iPod.
+                if let artwork {
+                    do {
+                        try IPodArtworkWriter.addArtwork(volume: volume, dbid: added.dbid, imageData: artwork)
+                    } catch {
+                        print("No se pudo poner la portada de \(exact.title): \(error.localizedDescription)")
+                    }
                 }
             }
         }
@@ -233,17 +237,20 @@ final class IPodMonitor {
         isWritingArtwork = true
         Task {
             let (added, failed): (Int, Int) = await Task.detached(priority: .userInitiated) {
-                var ok = 0, bad = 0
-                for job in jobs {
-                    do {
-                        try IPodArtworkWriter.addArtwork(volume: volume, dbid: job.dbid, imageData: job.image)
-                        ok += 1
-                    } catch {
-                        print("Portada: \(error.localizedDescription)")
-                        bad += 1
+                // Espera su turno si se están enviando canciones u otra portada.
+                (try? await IPodWriteLock.shared.run {
+                    var ok = 0, bad = 0
+                    for job in jobs {
+                        do {
+                            try IPodArtworkWriter.addArtwork(volume: volume, dbid: job.dbid, imageData: job.image)
+                            ok += 1
+                        } catch {
+                            print("Portada: \(error.localizedDescription)")
+                            bad += 1
+                        }
                     }
-                }
-                return (ok, bad)
+                    return (ok, bad)
+                }) ?? (0, jobs.count)
             }.value
             isWritingArtwork = false
             reloadTracks()
@@ -276,16 +283,19 @@ final class IPodMonitor {
         updatingArtworkAlbums.insert(albumKey)
         Task {
             let failed: Int = await Task.detached(priority: .userInitiated) {
-                var bad = 0
-                for dbid in dbids {
-                    do {
-                        try IPodArtworkWriter.addArtwork(volume: volume, dbid: dbid, imageData: image)
-                    } catch {
-                        print("Portada: \(error.localizedDescription)")
-                        bad += 1
+                // Espera su turno si se están enviando canciones u otra portada.
+                (try? await IPodWriteLock.shared.run {
+                    var bad = 0
+                    for dbid in dbids {
+                        do {
+                            try IPodArtworkWriter.addArtwork(volume: volume, dbid: dbid, imageData: image)
+                        } catch {
+                            print("Portada: \(error.localizedDescription)")
+                            bad += 1
+                        }
                     }
-                }
-                return bad
+                    return bad
+                }) ?? dbids.count
             }.value
             updatingArtworkAlbums.remove(albumKey)
             reloadTracks()

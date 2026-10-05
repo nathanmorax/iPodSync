@@ -38,7 +38,8 @@ nonisolated enum ArtworkDBReader {
     static func readAllSizes(volume: URL) throws -> [UInt64: [Thumbnail]] {
         let url = volume.appendingPathComponent("iPod_Control/Artwork/ArtworkDB")
         guard FileManager.default.fileExists(atPath: url.path) else { return [:] }
-        let db = try Data(contentsOf: url, options: .alwaysMapped)
+        // Lectura normal (sin mapear): mapear un disco que se puede desconectar truena la app.
+        let db = try Data(contentsOf: url)
         guard tag(db, 0) == "mhfd" else { return [:] }
 
         var index: [UInt64: [Thumbnail]] = [:]

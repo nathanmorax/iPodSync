@@ -84,7 +84,8 @@ enum IPodInfoReader {
     // MARK: - iTunesDB (solo el nombre de la lista maestra)
 
     private static func masterPlaylistName(_ url: URL) -> String? {
-        guard let db = try? Data(contentsOf: url, options: .alwaysMapped),
+        // Lectura normal (sin mapear): mapear un disco que se puede desconectar truena la app.
+        guard let db = try? Data(contentsOf: url),
               tag(db, 0) == "mhbd" else { return nil }
 
         // mhbd → varios mhsd; el de tipo 2 (o 3) trae las listas; la primera lista es la maestra.

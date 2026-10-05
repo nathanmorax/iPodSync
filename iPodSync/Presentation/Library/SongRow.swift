@@ -42,9 +42,18 @@ struct SongRow: View {
             }
 
             if number != nil {
-                Text(song.title).fontWeight(.medium).lineLimit(1)
-                Spacer(minLength: 6)
-                Text(subtitle).font(.caption).foregroundStyle(.secondary).monospacedDigit().lineLimit(1)
+                // El título toma todo el ancho y la duración va en una columna fija a la derecha,
+                // así todos los minutos quedan alineados (antes cada uno quedaba a media fila).
+                Text(song.title)
+                    .fontWeight(.medium)
+                    .lineLimit(1)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+                    .lineLimit(1)
+                    .frame(width: 44, alignment: .trailing)
             } else if compact {
                 HStack(spacing: 8) {
                     Text(song.title).fontWeight(.medium).lineLimit(1)
@@ -63,12 +72,9 @@ struct SongRow: View {
                 }
             }
 
-            Spacer(minLength: 8)
-
-            SyncStatusView(status: status, canSend: simulator.isConnected) {
-                simulator.send(song.id)
-            }
-            .frame(width: 108, alignment: .trailing)
+            // Sin ícono de estado: la duración queda pegada a la derecha.
+            // (Enviar: doble clic, clic derecho o el botón Enviar del pie.)
+            if number == nil { Spacer(minLength: 8) }
         }
         .padding(.leading, indented ? 38 : 12)
         .padding(.trailing, 12)
@@ -92,51 +98,64 @@ struct SongRow: View {
 }
 
 /// Indicador del estado de sincronización a la derecha de cada fila.
+/// Estado de una canción con solo dos SF Symbols: `ipod` (ya está o va para allá)
+/// y `laptopcomputer` (solo en la Mac; es botón para enviar).
 struct SyncStatusView: View {
     let status: SongSyncStatus
     let canSend: Bool
     let onSend: () -> Void
 
+    @State private var isHovering = false
+
     var body: some View {
-        switch status {
-        case .onDevice:
-            Label {
-                Text("En el iPod")
-            } icon: {
-                Image(systemName: "checkmark.circle.fill")
-                    .symbolRenderingMode(.palette)
-                    .foregroundStyle(.white, .green)
-            }
-            .font(.caption)
-            .foregroundStyle(Theme.onDeviceGreen)
-            .transition(.opacity)
+        Group {
+            switch status {
+            case .onDevice:
+                Image(systemName: "ipod")
+                    .foregroundStyle(.white)
+                    .help("En el iPod")
+                    .accessibilityLabel("En el iPod")
+                    .transition(.opacity)
 
-        case .sending(let progress):
-            HStack(spacing: 6) {
-                ProgressView(value: progress)
-                    .progressViewStyle(.linear)
-                    .controlSize(.mini)
-                    .frame(width: 44)
-                Text("\(Int(progress * 100)) %")
-                    .font(.caption)
-                    .monospacedDigit()
+            case .sending(let progress):
+                // El iPod en azul, latiendo, con un anillo que se llena.
+                Image(systemName: "ipod")
                     .foregroundStyle(.tint)
-            }
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel("Enviando, \(Int(progress * 100)) por ciento")
+                    .symbolEffect(.pulse, options: .repeating)
+                    .padding(4)
+                    .overlay {
+                        Circle()
+                            .trim(from: 0, to: progress)
+                            .stroke(Color.accentColor, style: StrokeStyle(lineWidth: 2, lineCap: .round))
+                            .rotationEffect(.degrees(-90))
+                    }
+                    .help("Enviando · \(Int(progress * 100)) %")
+                    .accessibilityLabel("Enviando, \(Int(progress * 100)) por ciento")
 
-        case .queued:
-            Label("En cola", systemImage: "clock")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            case .queued:
+                Image(systemName: "ipod")
+                    .foregroundStyle(.tertiary)
+                    .help("En cola para el iPod")
+                    .accessibilityLabel("En cola")
 
-        case .notOnDevice:
-            Button("Enviar", action: onSend)
-                .buttonStyle(.bordered)
-                .controlSize(.small)
+            case .notOnDevice:
+                // Solo en la Mac. Al pasar el mouse se pinta azul: clic para enviar.
+                Button(action: onSend) {
+                    Image(systemName: "laptopcomputer")
+                        .foregroundStyle(isHovering && canSend ? AnyShapeStyle(TintShapeStyle.tint)
+                                                               : AnyShapeStyle(HierarchicalShapeStyle.secondary))
+                        .frame(width: 26, height: 22)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
                 .disabled(!canSend)
-                .help(canSend ? "Enviar al iPod" : "Conecta el iPod para enviar")
+                .onHover { isHovering = $0 }
+                .help(canSend ? "Solo en tu Mac · clic para enviar al iPod" : "Solo en tu Mac · conecta el iPod para enviar")
+                .accessibilityLabel("Solo en tu Mac, enviar al iPod")
+            }
         }
+        .font(.system(size: 11))
+        .animation(.easeOut(duration: 0.2), value: status)
     }
 }
 

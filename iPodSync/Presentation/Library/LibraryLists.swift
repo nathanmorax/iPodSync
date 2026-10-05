@@ -261,34 +261,31 @@ struct AlbumArtwork: View {
                     .foregroundStyle(.white.opacity(0.92))
                     .padding(8)
             }
-            .overlay(alignment: .topTrailing) {
-                badge.padding(6)
-            }
+
             .shadow(color: .black.opacity(0.12), radius: 2, y: 1)
     }
 
+    /// Insignia con los mismos dos símbolos: `ipod` (todo el álbum está en el iPod) o
+    /// `laptopcomputer` (le falta).
     @ViewBuilder
     private var badge: some View {
         switch status {
         case .onDevice:
-            Image(systemName: "checkmark.circle.fill")
-                .symbolRenderingMode(.palette)
-                .foregroundStyle(.white, .green)
-                .font(.system(size: 16))
-        case .sending(let p):
-            Text("\(Int(p * 100)) %")
-                .font(.caption2.weight(.semibold))
-                .monospacedDigit()
-                .padding(.horizontal, 6).padding(.vertical, 2)
-                .background(.ultraThinMaterial, in: Capsule())
-        case .queued:
-            Image(systemName: "clock.fill")
-                .foregroundStyle(.white)
-                .padding(4)
-                .background(.black.opacity(0.35), in: Circle())
-        case .notOnDevice:
-            EmptyView()
+            symbolBadge("ipod", color: .white)
+                .help("Todo el álbum está en el iPod")
+        case .notOnDevice, .queued, .sending:
+            // Mientras no esté completo en el iPod, sigue siendo "de la Mac".
+            symbolBadge("laptopcomputer", color: .white.opacity(0.85))
+                .help("Faltan canciones de este álbum en el iPod")
         }
+    }
+
+    private func symbolBadge(_ name: String, color: Color) -> some View {
+        Image(systemName: name)
+            .font(.system(size: 9, weight: .semibold))
+            .foregroundStyle(color)
+            .frame(width: 20, height: 18)
+            .background(.black.opacity(0.55), in: Capsule())
     }
 }
 
@@ -314,7 +311,6 @@ struct AlbumDetailView: View {
 
     var body: some View {
         let list = tracks
-        let sendable = list.filter(simulator.canSend).map(\.id)
 
         VStack(alignment: .leading, spacing: 14) {
             Button(action: onBack) {
@@ -333,23 +329,19 @@ struct AlbumDetailView: View {
                         .lineLimit(2)
                     Text(details)
                         .foregroundStyle(.secondary)
-                    if !sendable.isEmpty {
-                        Button(list.count == 1 ? "Enviar al iPod" : "Enviar \(sendable.count) al iPod") {
-                            simulator.sendAll(sendable)
-                        }
-                        .buttonStyle(.borderedProminent)
+                    SendSongsButton(songs: list, simulator: simulator)
                         .padding(.top, 6)
-                    }
                 }
             }
 
             LibraryCard {
+                // Igual que en la página del artista: número, título y duración a la derecha.
                 ForEach(Array(list.enumerated()), id: \.element.id) { index, track in
-                    if index > 0 { Divider().padding(.leading, 52) }
+                    if index > 0 { Divider().padding(.leading, 42) }
                     SongRow(song: track,
-                            subtitle: ["\(track.trackNumber ?? index + 1)", track.durationText ?? track.sizeText]
-                                .joined(separator: " · "),
-                            simulator: simulator, library: library, order: list.map(\.id))
+                            subtitle: track.durationText ?? track.sizeText,
+                            simulator: simulator, library: library, order: list.map(\.id),
+                            number: track.trackNumber ?? index + 1)
                 }
             }
         }

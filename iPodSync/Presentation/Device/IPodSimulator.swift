@@ -32,7 +32,11 @@ final class IPodSimulator {
     private(set) var deviceTracks: [IPodTrack] = []
     /// Canciones enviadas en esta sesión al iPod real (el envío todavía es simulado).
     private(set) var sentIDs: Set<Song.ID> = []
-    @ObservationIgnored private var trackKeys: Set<String> = []
+    /// Canciones que ya tiene el iPod (título|artista). Observable: al terminar de leer el iPod,
+    /// las filas tienen que enterarse para dejar de decir "sin enviar" (antes era @ObservationIgnored).
+    private var trackKeys: Set<String> = []
+    /// Sube con cada "Cancelar envíos": una cola vieja que despierta tarde ya no toca el estado nuevo.
+    @ObservationIgnored private var queueGeneration = 0
     /// Archivos que se están agregando a la biblioteca ahora mismo.
     private(set) var importingCount = 0
     /// Avisos al agregar archivos (formato no compatible, duplicados…).
@@ -281,8 +285,9 @@ final class IPodSimulator {
 
         queue.append(id)
         if transferTask == nil {
+            let generation = queueGeneration
             transferTask = Task { [weak self] in
-                await self?.runQueue()
+                await self?.runQueue(generation: generation)
             }
         }
     }
@@ -383,78 +388,91 @@ final class IPodSimulator {
     }
 
     func cancelTransfers() {
+        queueGeneration += 1
         transferTask?.cancel()
         transferTask = nil
         queue.removeAll()
         transfer = nil
     }
 
-    private func runQueue() async {
+    private func runQueue(generation: Int) async {
         var position = 0
+        /// ¿Esta cola sigue siendo la vigente? (false si se canceló y ya empezó otra).
+        func isCurrent() -> Bool { !Task.isCancelled && generation == queueGeneration }
 
-        while !queue.isEmpty {
-            if Task.isCancelled { return }
-            let id = queue.removeFirst()
-            guard let song = songs.first(where: { $0.id == id }) else { continue }
-            position += 1
+        while true {
+            while !queue.isEmpty {
+                guard isCurrent() else { return }
+                let id = queue.removeFirst()
+                guard let song = songs.first(where: { $0.id == id }) else { continue }
+                position += 1
+
+                withAnimation(.easeOut(duration: 0.2)) {
+                    transfer = TransferState(song: song, position: position,
+                                             total: position + queue.count, progress: 0)
+                }
+
+                if !isSimulated, let realSender {
+                    // iPod real: copiar de verdad.
+                    let current = position
+                    do {
+                        try await realSender(song) { [weak self] value in
+                            Task { @MainActor in
+                                guard let self, self.transfer?.song.id == id else { return }
+                                self.transfer?.progress = value
+                                self.transfer?.total = current + self.queue.count
+                            }
+                        }
+                    } catch {
+                        // Cancelada (⌘. o expulsar): cancelTransfers ya limpió todo; no tocar la cola
+                        // nueva que pudo haber empezado mientras tanto.
+                        if error is CancellationError || !isCurrent() { return }
+                        // Se detiene la cola: mejor revisar antes de seguir escribiendo en el iPod.
+                        let message = error is CancellationError
+                            ? nil
+                            : "“\(song.title)”: \(error.localizedDescription)"
+                        queue.removeAll()
+                        withAnimation(.easeOut(duration: 0.2)) { transfer = nil }
+                        transferTask = nil
+                        if let message { sendMessage = message }
+                        onRealQueueFinished?()
+                        return
+                    }
+                    guard isCurrent() else { return }
+                } else {
+                    // iPod de prueba: solo la animación.
+                    let duration = max(1.8, song.sizeMB * 0.3)
+                    let steps = 100
+                    for step in 1...steps {
+                        try? await Task.sleep(for: .seconds(duration / Double(steps)))
+                        guard isCurrent() else { return }
+                        transfer?.progress = Double(step) / Double(steps)
+                        transfer?.total = position + queue.count
+                    }
+                }
+
+                if let index = songs.firstIndex(where: { $0.id == id }) {
+                    songs[index].isOnDevice = true
+                    if !isSimulated { sentIDs.insert(id) }
+                }
+                recentIDs.removeAll { $0 == id }
+                recentIDs.insert(id, at: 0)
+            }
+
+            transfer?.finished = true
+            if !isSimulated { onRealQueueFinished?() }
+            try? await Task.sleep(for: .seconds(1.2))
+            guard isCurrent() else { return }
+
+            // Si mandaste más canciones durante la pausa final, se siguen enviando
+            // (antes se quedaban "en cola" para siempre).
+            if !queue.isEmpty { continue }
 
             withAnimation(.easeOut(duration: 0.2)) {
-                transfer = TransferState(song: song, position: position,
-                                         total: position + queue.count, progress: 0)
+                transfer = nil
             }
-
-            if !isSimulated, let realSender {
-                // iPod real: copiar de verdad.
-                let current = position
-                do {
-                    try await realSender(song) { [weak self] value in
-                        Task { @MainActor in
-                            guard let self, self.transfer?.song.id == id else { return }
-                            self.transfer?.progress = value
-                            self.transfer?.total = current + self.queue.count
-                        }
-                    }
-                } catch {
-                    // Se detiene la cola: mejor revisar antes de seguir escribiendo en el iPod.
-                    let message = error is CancellationError
-                        ? nil
-                        : "“\(song.title)”: \(error.localizedDescription)"
-                    queue.removeAll()
-                    withAnimation(.easeOut(duration: 0.2)) { transfer = nil }
-                    transferTask = nil
-                    if let message { sendMessage = message }
-                    onRealQueueFinished?()
-                    return
-                }
-                if Task.isCancelled { return }
-            } else {
-                // iPod de prueba: solo la animación.
-                let duration = max(1.8, song.sizeMB * 0.3)
-                let steps = 100
-                for step in 1...steps {
-                    try? await Task.sleep(for: .seconds(duration / Double(steps)))
-                    if Task.isCancelled { return }
-                    transfer?.progress = Double(step) / Double(steps)
-                    transfer?.total = position + queue.count
-                }
-            }
-
-            if let index = songs.firstIndex(where: { $0.id == id }) {
-                songs[index].isOnDevice = true
-                if !isSimulated { sentIDs.insert(id) }
-            }
-            recentIDs.removeAll { $0 == id }
-            recentIDs.insert(id, at: 0)
+            transferTask = nil
+            return
         }
-
-        transfer?.finished = true
-        if !isSimulated { onRealQueueFinished?() }
-        try? await Task.sleep(for: .seconds(1.2))
-        if Task.isCancelled { return }
-
-        withAnimation(.easeOut(duration: 0.2)) {
-            transfer = nil
-        }
-        transferTask = nil
     }
 }

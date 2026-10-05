@@ -252,18 +252,14 @@ struct ArtistDetailView: View {
         let list = tracks
         let groups = albums(list)
         let cover = list.first(where: { $0.artworkData != nil }) ?? list.first
-        let sendable = list.filter(simulator.canSend).map(\.id)
+        let artistMissing = list.filter { simulator.status(of: $0) != .onDevice }.count
 
         VStack(alignment: .leading, spacing: 14) {
             ArtistPageHeader(name: artist, albumCount: groups.count, songCount: list.count, onBack: onBack) {
                 if let cover { SongArtworkView(song: cover, size: 56, cornerRadius: 0) }
             } accessory: {
-                if !sendable.isEmpty {
-                    Button("Enviar \(sendable.count)") { simulator.sendAll(sendable) }
-                        .buttonStyle(.borderedProminent)
-                        .controlSize(.small)
-                        .help("Enviar al iPod las canciones de \(artist) que faltan")
-                }
+                SendSongsButton(songs: list, simulator: simulator, compact: true,
+                                help: "Enviar al iPod las canciones de \(artist) que faltan")
             }
 
             // Como Apple Music (Biblioteca › Artistas): cada álbum con su portada de encabezado
@@ -271,15 +267,15 @@ struct ArtistDetailView: View {
             let order = groups.flatMap { $0.map(\.id) }
             ForEach(groups, id: \.first!.albumKey) { songs in
                 let first = songs.first(where: { $0.artworkData != nil }) ?? songs[0]
-                let albumSendable = songs.filter(simulator.canSend).map(\.id)
+                let albumMissing = songs.filter { simulator.status(of: $0) != .onDevice }.count
                 VStack(alignment: .leading, spacing: 6) {
                     ArtistAlbumSectionHeader(title: first.album, year: first.year, songCount: songs.count) {
                         SongArtworkView(song: first, size: 56, cornerRadius: 0)
                     } accessory: {
-                        if !albumSendable.isEmpty && albumSendable.count < sendable.count {
-                            Button("Enviar \(albumSendable.count)") { simulator.sendAll(albumSendable) }
-                                .controlSize(.small)
-                                .help("Enviar al iPod las canciones de este álbum que faltan")
+                        // Por álbum solo si al artista le falta más que este álbum (si no, basta el de arriba).
+                        if albumMissing > 0 && albumMissing < artistMissing {
+                            SendSongsButton(songs: songs, simulator: simulator, prominent: false, compact: true,
+                                            help: "Enviar al iPod las canciones de este álbum que faltan")
                         }
                     }
                     .contextMenu {

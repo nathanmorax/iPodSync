@@ -35,7 +35,8 @@ nonisolated enum ITunesDBReader {
 
         let db: Data
         do {
-            db = try Data(contentsOf: url, options: .alwaysMapped)
+            // Lectura normal (sin mapear): mapear un disco que se puede desconectar truena la app.
+            db = try Data(contentsOf: url)
         } catch {
             throw ReadError.unreadable(error.localizedDescription)
         }

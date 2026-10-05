@@ -16,7 +16,8 @@ enum Theme {
     static let cardStroke        = Color(nsColor: .separatorColor)
     static let groupHeader       = Color.dynamic(light: 0xFAFAFA, dark: 0x2B2B2E)
     static let searchBackground  = Color(nsColor: .quaternaryLabelColor).opacity(0.5)
-    static let onDeviceGreen     = Color.dynamic(light: 0x1F7A3F, dark: 0x4CC26F)
+    /// "Ya está en el iPod": verde menta suave (antes 0x4CC26F, muy chillón sobre el panel oscuro).
+    static let onDeviceGreen     = Color.dynamic(light: 0x2E8B6E, dark: 0x8ED9BC)
 
     // MARK: Escenario del iPod
     static let stage      = Color.dynamic(light: 0xF1F0EC, dark: 0x19191B)

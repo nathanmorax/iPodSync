@@ -15,9 +15,35 @@ nonisolated enum MacLibraryStore {
             .appendingPathComponent("library.json")
     }
 
+    /// Aviso pendiente si la biblioteca guardada no se pudo leer (lo muestra IPodMonitor.start).
+    nonisolated(unsafe) private static var pendingProblem: String?
+
+    /// Devuelve el aviso (una sola vez).
+    static func takeLoadProblem() -> String? {
+        defer { pendingProblem = nil }
+        return pendingProblem
+    }
+
     static func load() -> [Song] {
-        guard let data = try? Data(contentsOf: fileURL),
-              var songs = try? JSONDecoder().decode([Song].self, from: data) else { return [] }
+        // Sin archivo = biblioteca nueva, vacía.
+        guard let data = try? Data(contentsOf: fileURL) else { return [] }
+        let decoded: [Song]
+        do {
+            decoded = try JSONDecoder().decode([Song].self, from: data)
+        } catch {
+            // Antes se cargaba vacía sin avisar y el siguiente guardado borraba la biblioteca.
+            // Ahora el archivo se aparta (no se pierde) y se avisa.
+            let stamp = Date().formatted(.iso8601.year().month().day().time(includingFractionalSeconds: false))
+                .replacingOccurrences(of: ":", with: "-")
+            let aside = fileURL.deletingLastPathComponent()
+                .appendingPathComponent("library-no-se-pudo-leer-\(stamp).json")
+            try? FileManager.default.moveItem(at: fileURL, to: aside)
+            pendingProblem = "No se pudo leer tu biblioteca guardada (\(error.localizedDescription)). "
+                + "Se guardó una copia como “\(aside.lastPathComponent)” y empezamos con la biblioteca vacía."
+            print("Biblioteca: \(error)")
+            return []
+        }
+        var songs = decoded
 
         // La ruta guardada puede ya no servir (archivo movido); el bookmark la vuelve a encontrar.
         for index in songs.indices {
