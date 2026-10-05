@@ -164,6 +164,8 @@ struct AlbumsGridView: View {
     let onOpen: (Song) -> Void
 
     @AppStorage(SettingsKey.albumColumns) private var columnCount = 2
+    /// Álbum con la ventanita "Elegir de internet…" abierta.
+    @State private var choosingArtworkFor: String?
 
     private var columns: [GridItem] {
         Array(repeating: GridItem(.flexible(), spacing: 12, alignment: .top), count: max(2, min(3, columnCount)))
@@ -215,6 +217,17 @@ struct AlbumsGridView: View {
                         simulator.sendAll(sendable)
                     }
                     .disabled(sendable.isEmpty)
+                    Divider()
+                    Button("Elegir de internet…", systemImage: "square.grid.2x2") { choosingArtworkFor = album.key }
+                    AlbumArtworkMenu(songs: album.songs, simulator: simulator)
+                }
+                .popover(isPresented: Binding(get: { choosingArtworkFor == album.key },
+                                              set: { if !$0 { choosingArtworkFor = nil } }),
+                         arrowEdge: .trailing) {
+                    OnlineArtworkChooser(artist: cover.artist, album: cover.album) { data in
+                        simulator.setArtwork(data, forAlbum: album.key)
+                        choosingArtworkFor = nil
+                    }
                 }
                 .accessibilityLabel("\(cover.album), \(cover.artist), \(album.songs.count) canciones")
                 .accessibilityHint("Abre el álbum")
@@ -310,9 +323,7 @@ struct AlbumDetailView: View {
             .help("Volver a Álbumes (⌘[)")
 
             HStack(alignment: .bottom, spacing: 16) {
-                SongArtworkView(song: list.first(where: { $0.artworkData != nil }) ?? song, size: 120, cornerRadius: 10)
-                    .shadow(color: .black.opacity(0.16), radius: 9, y: 6)
-                    .accessibilityHidden(true)
+                EditableAlbumCover(songs: list, fallback: song, simulator: simulator)
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text(song.album)

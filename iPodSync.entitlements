@@ -5,5 +5,8 @@
 	<!-- Recordar el acceso al disco del iPod entre aperturas (security-scoped bookmarks). -->
 	<key>com.apple.security.files.bookmarks.app-scope</key>
 	<true/>
+	<!-- Conectarse a internet para buscar portadas de álbumes (iTunes Search). -->
+	<key>com.apple.security.network.client</key>
+	<true/>
 </dict>
 </plist>

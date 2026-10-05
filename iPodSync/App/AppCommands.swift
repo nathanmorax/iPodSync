@@ -20,6 +20,8 @@ struct IPodSyncCommands: Commands {
         CommandGroup(replacing: .newItem) {
             Button("Agregar a la biblioteca…") { library.isImporting = true }
                 .keyboardShortcut("o", modifiers: .command)
+            Button("Buscar portadas que faltan") { Task { await simulator.fetchMissingArtwork() } }
+                .disabled(!simulator.fetchingArtwork.isEmpty)
         }
 
         // Edición › Buscar

@@ -253,6 +253,69 @@ final class IPodMonitor {
         }
     }
 
+    // MARK: - Cambiar la portada de un álbum del iPod
+
+    /// Álbumes del iPod (clave artista|álbum) a los que se les está poniendo portada.
+    private(set) var updatingArtworkAlbums: Set<String> = []
+
+    /// Pone `imageData` como portada de esas canciones del iPod (reemplaza la que tuvieran).
+    func replaceArtwork(albumKey: String, tracks: [IPodTrack], imageData: Data) {
+        guard let volume = accessibleVolumeURL, let device else {
+            alertMessage = WriteToIPodError.noAccess.localizedDescription
+            return
+        }
+        guard hasBackup(for: device.id) else {
+            alertMessage = WriteToIPodError.needsBackup.localizedDescription
+            return
+        }
+        let dbids = tracks.map(\.dbid).filter { $0 != 0 }
+        guard !dbids.isEmpty, !updatingArtworkAlbums.contains(albumKey) else { return }
+        // Misma resolución que las portadas de la Mac; el iPod la reduce a 100 y 200 px.
+        let image = MacLibraryImporter.thumbnail(imageData) ?? imageData
+
+        updatingArtworkAlbums.insert(albumKey)
+        Task {
+            let failed: Int = await Task.detached(priority: .userInitiated) {
+                var bad = 0
+                for dbid in dbids {
+                    do {
+                        try IPodArtworkWriter.addArtwork(volume: volume, dbid: dbid, imageData: image)
+                    } catch {
+                        print("Portada: \(error.localizedDescription)")
+                        bad += 1
+                    }
+                }
+                return bad
+            }.value
+            updatingArtworkAlbums.remove(albumKey)
+            reloadTracks()
+            if failed > 0 {
+                alertMessage = "No se pudo cambiar la portada de \(failed) de \(dbids.count) canciones."
+            }
+        }
+    }
+
+    /// Busca la portada del álbum en internet y la pone en el iPod si el álbum y el artista coinciden.
+    /// Devuelve false si no encontró una que coincida bien.
+    @discardableResult
+    func fetchArtworkFromInternet(albumKey: String, title: String, artist: String, tracks: [IPodTrack]) async -> Bool {
+        updatingArtworkAlbums.insert(albumKey)
+        let data: Data?
+        do {
+            if let match = try await ArtworkLookup.bestMatch(artist: artist, album: title) {
+                data = try await ArtworkLookup.download(match)
+            } else {
+                data = nil
+            }
+        } catch {
+            data = nil
+        }
+        updatingArtworkAlbums.remove(albumKey)
+        guard let data else { return false }
+        replaceArtwork(albumKey: albumKey, tracks: tracks, imageData: data)
+        return true
+    }
+
     // MARK: - Música del iPod
 
     /// Vuelve a leer la base de datos del iPod (menú iPod › Volver a leer la música).

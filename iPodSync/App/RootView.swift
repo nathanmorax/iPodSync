@@ -53,6 +53,13 @@ struct RootView: View {
             } message: {
                 Text(simulator.sendMessage ?? "")
             }
+            .alert("Portadas",
+                   isPresented: Binding(get: { simulator.artworkMessage != nil },
+                                        set: { if !$0 { simulator.artworkMessage = nil } })) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(simulator.artworkMessage ?? "")
+            }
             .alert("Algunos archivos no se agregaron",
                    isPresented: Binding(get: { simulator.importMessage != nil },
                                         set: { if !$0 { simulator.importMessage = nil } })) {

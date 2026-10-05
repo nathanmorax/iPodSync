@@ -16,6 +16,8 @@ struct IPodMusicView: View {
     let query: String
 
     @AppStorage(SettingsKey.albumColumns) private var columnCount = 2
+    /// Álbum con la ventanita "Elegir de internet…" abierta.
+    @State private var choosingArtworkFor: String?
 
     private var filtered: [IPodTrack] {
         guard isSearching else { return monitor.tracks }
@@ -132,6 +134,27 @@ struct IPodMusicView: View {
                     }
                     .buttonStyle(.plain)
                     .help("\(album.title) — \(album.artist)")
+                    .contextMenu {
+                        Button("Elegir de internet…", systemImage: "square.grid.2x2") { choosingArtworkFor = album.key }
+                            .disabled(monitor.updatingArtworkAlbums.contains(album.key))
+                        IPodAlbumArtworkMenu(albumKey: album.key, title: album.title, artist: album.artist,
+                                             tracks: album.tracks, monitor: monitor)
+                    }
+                    .popover(isPresented: Binding(get: { choosingArtworkFor == album.key },
+                                                  set: { if !$0 { choosingArtworkFor = nil } }),
+                             arrowEdge: .trailing) {
+                        OnlineArtworkChooser(artist: album.artist, album: album.title) { data in
+                            monitor.replaceArtwork(albumKey: album.key, tracks: album.tracks, imageData: data)
+                            choosingArtworkFor = nil
+                        }
+                    }
+                    .overlay(alignment: .top) {
+                        if monitor.updatingArtworkAlbums.contains(album.key) {
+                            ProgressView()
+                                .controlSize(.small)
+                                .padding(.top, 12)
+                        }
+                    }
                     .accessibilityLabel("\(album.title), \(album.artist), \(album.tracks.count) canciones")
                     .accessibilityHint("Abre el álbum")
                 }
@@ -156,9 +179,8 @@ struct IPodMusicView: View {
                 .help("Volver a Álbumes (⌘[)")
 
                 HStack(alignment: .bottom, spacing: 14) {
-                    IPodArtworkView(track: cover, artwork: monitor.artwork, size: 110,
-                                    macArtwork: monitor.macArtwork(for: cover))
-                        .shadow(color: .black.opacity(0.25), radius: 9, y: 6)
+                    EditableIPodAlbumCover(albumKey: album.key, title: album.title, artist: album.artist,
+                                           tracks: album.tracks, cover: cover, monitor: monitor)
                     VStack(alignment: .leading, spacing: 4) {
                         Text(album.title)
                             .font(.title3.weight(.bold))
@@ -418,7 +440,8 @@ struct IPodArtworkView: View {
                     .strokeBorder(.black.opacity(0.10), lineWidth: 0.5)
             )
             .accessibilityHidden(true)
-            .task(id: "\(track.dbid)-\(neededPixels)") {
+            // Incluye el almacén de portadas: al cambiar una portada se crea uno nuevo y se vuelve a cargar.
+            .task(id: "\(track.dbid)-\(neededPixels)-\(artwork.map { ObjectIdentifier($0).hashValue } ?? 0)") {
                 guard macArtwork == nil, let artwork else { return }
                 let loaded = await artwork.image(for: track.dbid, minPixels: neededPixels)
                 withAnimation(.easeOut(duration: 0.15)) { image = loaded }

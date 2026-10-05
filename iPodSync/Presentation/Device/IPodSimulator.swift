@@ -326,6 +326,58 @@ final class IPodSimulator {
         if !isSimulated { MacLibraryStore.save(songs) }
     }
 
+    /// Cambia (o quita, con nil) la portada de todas las canciones de un álbum de la Mac.
+    /// La imagen se reduce a ~600 px, igual que las portadas que vienen en los archivos.
+    func setArtwork(_ imageData: Data?, forAlbum albumKey: String) {
+        let image = imageData.map { MacLibraryImporter.thumbnail($0) ?? $0 }
+        for index in songs.indices where songs[index].albumKey == albumKey {
+            songs[index].artworkData = image
+        }
+        if !isSimulated { MacLibraryStore.save(songs) }
+    }
+
+    /// Álbumes buscando portada en internet ahora mismo (para mostrar un indicador).
+    private(set) var fetchingArtwork: Set<String> = []
+    /// Aviso al terminar de buscar portadas.
+    var artworkMessage: String?
+
+    /// Busca la portada del álbum en internet y la pone si el álbum y el artista coinciden.
+    /// Devuelve false si no encontró una que coincida bien.
+    @discardableResult
+    func fetchArtwork(forAlbum albumKey: String) async -> Bool {
+        guard let song = songs.first(where: { $0.albumKey == albumKey }),
+              !fetchingArtwork.contains(albumKey) else { return false }
+        fetchingArtwork.insert(albumKey)
+        defer { fetchingArtwork.remove(albumKey) }
+        do {
+            guard let match = try await ArtworkLookup.bestMatch(artist: song.artist, album: song.album) else {
+                return false
+            }
+            let data = try await ArtworkLookup.download(match)
+            setArtwork(data, forAlbum: albumKey)
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    /// Busca en internet la portada de todos los álbumes que no tienen.
+    func fetchMissingArtwork() async {
+        let keys = Set(songs.filter { $0.artworkData == nil }.map(\.albumKey))
+        guard !keys.isEmpty else {
+            artworkMessage = "Todos los álbumes ya tienen portada."
+            return
+        }
+        var found = 0
+        for key in keys {
+            if await fetchArtwork(forAlbum: key) { found += 1 }
+        }
+        let missing = keys.count - found
+        artworkMessage = missing == 0
+            ? "Listo: se pusieron \(found) portadas."
+            : "Se pusieron \(found) portadas. \(missing) no se encontraron; ponlas a mano con clic derecho › Cambiar portada…"
+    }
+
     func sendAll(_ ids: [Song.ID]) {
         ids.forEach { send($0) }
     }

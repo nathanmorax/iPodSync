@@ -33,7 +33,8 @@ nonisolated enum IPodArtworkWriter {
         }
     }
 
-    /// Agrega la portada para la canción con ese dbid. `imageData`: JPEG/PNG de la portada.
+    /// Pone la portada para la canción con ese dbid (si ya tenía una, la reemplaza).
+    /// `imageData`: JPEG/PNG de la portada.
     static func addArtwork(volume: URL, dbid: UInt64, imageData: Data) throws {
         let fm = FileManager.default
         let control = volume.appendingPathComponent("iPod_Control")
@@ -92,9 +93,33 @@ nonisolated enum IPodArtworkWriter {
             if section.type == 1 {
                 let list = Int(u32(bytes, 4))
                 guard tag(bytes, list) == "mhli" else { throw ArtworkError.unsupported("sin mhli") }
-                put32(&bytes, list + 8, u32(bytes, list + 8) + 1)
-                bytes += mhii
-                put32(&bytes, 8, UInt32(bytes.count))
+                let count = Int(u32(bytes, list + 8))
+                let listHeader = Int(u32(bytes, list + 4))
+
+                // Si la canción ya tenía portada, se quita su imagen vieja (mhii con el mismo song_id)
+                // para que el iPod muestre la nueva. Sus píxeles viejos quedan sin usar en el .ithmb.
+                var kept: [UInt8] = []
+                var keptCount = 0
+                var entry = list + listHeader
+                for _ in 0..<count {
+                    guard tag(bytes, entry) == "mhii" else { throw ArtworkError.unsupported("mhii dañado") }
+                    let total = Int(u32(bytes, entry + 8))
+                    guard total > 0, entry + total <= bytes.count else { throw ArtworkError.unsupported("mhii dañado") }
+                    if u64(bytes, entry + 0x14) != dbid {
+                        kept += bytes[entry..<(entry + total)]
+                        keptCount += 1
+                    }
+                    entry += total
+                }
+                let tail = Array(bytes[entry...])
+
+                var rebuilt = Array(bytes[0..<(list + listHeader)])
+                put32(&rebuilt, list + 8, UInt32(keptCount + 1))
+                rebuilt += kept
+                rebuilt += mhii
+                rebuilt += tail
+                put32(&rebuilt, 8, UInt32(rebuilt.count))
+                bytes = rebuilt
             }
             output += bytes
         }
@@ -333,6 +358,10 @@ nonisolated enum IPodArtworkWriter {
         guard o + 4 <= b.count else { return }
         for i in 0..<4 { b[o + i] = UInt8((v >> (8 * UInt32(i))) & 0xFF) }
     }
+    private static func u64(_ b: [UInt8], _ o: Int) -> UInt64 {
+        UInt64(u32(b, o)) | UInt64(u32(b, o + 4)) << 32
+    }
+
     private static func put64(_ b: inout [UInt8], _ o: Int, _ v: UInt64) {
         guard o + 8 <= b.count else { return }
         for i in 0..<8 { b[o + i] = UInt8((v >> (8 * UInt64(i))) & 0xFF) }
