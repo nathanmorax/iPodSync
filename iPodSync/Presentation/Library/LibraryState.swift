@@ -18,6 +18,8 @@ final class LibraryState {
         didSet {
             selectedAlbumID = nil
             openIPodAlbum = nil
+            openArtist = nil
+            openIPodArtist = nil
             UserDefaults.standard.set(scope.rawValue, forKey: Self.scopeKey)
         }
     }
@@ -27,6 +29,8 @@ final class LibraryState {
             guard source != oldValue else { return }
             selectedAlbumID = nil
             openIPodAlbum = nil
+            openArtist = nil
+            openIPodArtist = nil
             clearSelection()
         }
     }
@@ -36,11 +40,15 @@ final class LibraryState {
     /// Se incrementa con ⌘F para pedir el foco del buscador del panel.
     var searchFocusRequest = 0
     var selectedAlbumID: Song.ID?
+    /// Artista abierto (su página) en la Mac y en el iPod.
+    var openArtist: String?
+    var openIPodArtist: String?
     /// Álbum abierto en "En el iPod" (clave artista|álbum).
     var openIPodAlbum: String?
     /// Artistas cerrados en la vista Artistas (Mac y iPod por separado).
-    var collapsedArtists: Set<String> = []
-    var collapsedIPodArtists: Set<String> = []
+    /// Artistas abiertos en la vista Artistas (Mac y iPod por separado). Al inicio todos cerrados.
+    var expandedArtists: Set<String> = []
+    var expandedIPodArtists: Set<String> = []
     var isImporting = false
 
     /// Canciones seleccionadas con clic, ⌘‑clic o ⇧‑clic.
@@ -56,10 +64,11 @@ final class LibraryState {
     func toggleArtist(_ name: String,
                       in keyPath: ReferenceWritableKeyPath<LibraryState, Set<String>>,
                       all names: [String]) {
-        let collapse = !self[keyPath: keyPath].contains(name)
+        // El conjunto guarda los artistas abiertos.
+        let expand = !self[keyPath: keyPath].contains(name)
         if NSEvent.modifierFlags.contains(.option) {
-            self[keyPath: keyPath] = collapse ? Set(names) : []
-        } else if collapse {
+            self[keyPath: keyPath] = expand ? Set(names) : []
+        } else if expand {
             self[keyPath: keyPath].insert(name)
         } else {
             self[keyPath: keyPath].remove(name)

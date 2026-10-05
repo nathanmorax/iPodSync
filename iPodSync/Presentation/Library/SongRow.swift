@@ -14,6 +14,8 @@ struct SongRow: View {
     let library: LibraryState
     /// Orden visible de la lista, para seleccionar rangos con ⇧‑clic.
     let order: [Song.ID]
+    /// Número de pista: fila de álbum (sin portada, que ya va en el encabezado del álbum).
+    var number: Int? = nil
 
     @AppStorage(SettingsKey.rowDensity) private var density = "regular"
 
@@ -23,14 +25,27 @@ struct SongRow: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            SongArtworkView(song: song, size: compact ? 22 : 30)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 5, style: .continuous)
-                        .strokeBorder(.black.opacity(0.10), lineWidth: 0.5)
-                )
-                .accessibilityHidden(true)
+            if let number {
+                Text("\(number)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+                    .frame(width: 20, alignment: .trailing)
+                    .accessibilityHidden(true)
+            } else {
+                SongArtworkView(song: song, size: compact ? 22 : 30)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 5, style: .continuous)
+                            .strokeBorder(.black.opacity(0.10), lineWidth: 0.5)
+                    )
+                    .accessibilityHidden(true)
+            }
 
-            if compact {
+            if number != nil {
+                Text(song.title).fontWeight(.medium).lineLimit(1)
+                Spacer(minLength: 6)
+                Text(subtitle).font(.caption).foregroundStyle(.secondary).monospacedDigit().lineLimit(1)
+            } else if compact {
                 HStack(spacing: 8) {
                     Text(song.title).fontWeight(.medium).lineLimit(1)
                     Text(subtitle).font(.caption).foregroundStyle(.secondary).monospacedDigit().lineLimit(1)
@@ -57,7 +72,7 @@ struct SongRow: View {
         }
         .padding(.leading, indented ? 38 : 12)
         .padding(.trailing, 12)
-        .frame(height: compact ? 32 : 44)
+        .frame(height: number != nil ? 34 : (compact ? 32 : 44))
         .background(isSelected ? Color.accentColor.opacity(0.16) : .clear)
         .contentShape(Rectangle())
         // Doble clic envía; un clic selecciona (⌘ agrega, ⇧ rango).

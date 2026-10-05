@@ -82,8 +82,113 @@ struct IPodMusicView: View {
                 albumsGrid
                     .transition(.opacity)
             }
+        } else if scope == .artists {
+            if let name = library.openIPodArtist, monitor.tracks.contains(where: { $0.artist == name }) {
+                artistPage(name)
+                    .transition(.move(edge: .trailing).combined(with: .opacity))
+            } else {
+                artistsGrid
+                    .transition(.opacity)
+            }
         } else {
             list
+        }
+    }
+
+    // MARK: Artistas (círculos de 3 y página del artista)
+
+    private var artistGroups: [(artist: String, tracks: [IPodTrack])] {
+        let grouped = Dictionary(grouping: filtered, by: \.artist)
+            .map { (artist: $0.key.isEmpty ? "Artista desconocido" : $0.key, tracks: $0.value) }
+        return grouped.sorted { a, b in
+            if isSearching {
+                let rankA = bestMatch(a.tracks), rankB = bestMatch(b.tracks)
+                if rankA != rankB { return rankA < rankB }
+            }
+            return a.artist.localizedCompare(b.artist) == .orderedAscending
+        }
+    }
+
+    private var artistsGrid: some View {
+        let groups = artistGroups
+        let columns = Array(repeating: GridItem(.flexible(), spacing: 8, alignment: .top), count: 3)
+        return AlphabetIndexedScroll(entries: groups.map { (id: $0.artist, title: $0.artist) }, showsIndex: !isSearching) {
+            LazyVGrid(columns: columns, alignment: .center, spacing: 16) {
+                ForEach(groups, id: \.artist) { group in
+                    let cover = group.tracks.first(where: \.hasArtwork) ?? group.tracks[0]
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.25)) { library.openIPodArtist = cover.artist }
+                    } label: {
+                        ArtistCell(name: group.artist, count: group.tracks.count) {
+                            IPodArtworkView(track: cover, artwork: monitor.artwork, size: nil,
+                                            macArtwork: monitor.macArtwork(for: cover))
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .help(group.artist)
+                    .id(group.artist)   // destino del índice A–Z
+                    .accessibilityLabel("\(group.artist), \(group.tracks.count) canciones")
+                    .accessibilityHint("Abre el artista")
+                }
+            }
+            .padding(.top, 2)
+        }
+    }
+
+    private func artistPage(_ name: String) -> some View {
+        let tracks = monitor.tracks
+            .filter { $0.artist == name }
+            .sorted { ($0.album, $0.trackNumber, $0.title) < ($1.album, $1.trackNumber, $1.title) }
+        // Álbumes del artista, del más nuevo al más viejo (misma clave que la vista Álbumes).
+        let albums = Dictionary(grouping: tracks) { "\($0.artist)|\($0.album)" }
+            .map { (key: $0.key, tracks: $0.value) }
+            .sorted { a, b in
+                let ya = a.tracks[0].year, yb = b.tracks[0].year
+                if ya != yb { return ya > yb }
+                return a.tracks[0].album.localizedCompare(b.tracks[0].album) == .orderedAscending
+            }
+        let cover = tracks.first(where: \.hasArtwork) ?? tracks[0]
+
+        return AlphabetIndexedScroll(entries: [], showsIndex: false) {
+            VStack(alignment: .leading, spacing: 14) {
+                ArtistPageHeader(name: name.isEmpty ? "Artista desconocido" : name, albumCount: albums.count, songCount: tracks.count, onBack: {
+                    withAnimation(.easeInOut(duration: 0.25)) { library.openIPodArtist = nil }
+                }) {
+                    IPodArtworkView(track: cover, artwork: monitor.artwork, size: 56,
+                                    macArtwork: monitor.macArtwork(for: cover))
+                } accessory: {
+                    EmptyView()
+                }
+
+                // Como Apple Music (Biblioteca › Artistas): cada álbum con su portada de encabezado
+                // y sus canciones abajo. Todo a la vista, sin abrir nada ni cambiar de pestaña.
+                ForEach(albums, id: \.key) { album in
+                    let first = album.tracks.first(where: \.hasArtwork) ?? album.tracks[0]
+                    let songs = album.tracks.sorted { ($0.trackNumber, $0.title) < ($1.trackNumber, $1.title) }
+                    VStack(alignment: .leading, spacing: 6) {
+                        ArtistAlbumSectionHeader(title: first.album.isEmpty ? "Sin álbum" : first.album,
+                                                 year: first.year > 0 ? first.year : nil,
+                                                 songCount: songs.count) {
+                            IPodArtworkView(track: first, artwork: monitor.artwork, size: 56,
+                                            macArtwork: monitor.macArtwork(for: first))
+                        } accessory: {
+                            EmptyView()
+                        }
+                        .contextMenu {
+                            IPodAlbumArtworkMenu(albumKey: album.key, title: first.album, artist: first.artist,
+                                                 tracks: album.tracks, monitor: monitor)
+                        }
+                        VStack(spacing: 0) {
+                            ForEach(Array(songs.enumerated()), id: \.element.id) { index, track in
+                                if index > 0 { Divider().padding(.leading, 42) }
+                                IPodTrackRow(track: track, subtitle: "", artwork: monitor.artwork,
+                                             number: track.trackNumber > 0 ? track.trackNumber : index + 1)
+                            }
+                        }
+                    }
+                    .padding(.bottom, 6)
+                }
+            }
         }
     }
 
@@ -356,19 +461,32 @@ struct IPodTrackRow: View {
     let track: IPodTrack
     let subtitle: String
     var artwork: IPodArtworkStore? = nil
+    /// Número de pista: fila de álbum (sin portada, que ya va en el encabezado del álbum).
+    var number: Int? = nil
 
     var body: some View {
         HStack(spacing: 10) {
-            IPodArtworkView(track: track, artwork: artwork, size: 30)
-
-            VStack(alignment: .leading, spacing: 1) {
+            if let number {
+                Text("\(number)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+                    .frame(width: 20, alignment: .trailing)
                 Text(track.title)
                     .fontWeight(.medium)
                     .lineLimit(1)
-                Text(subtitle)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
+            } else {
+                IPodArtworkView(track: track, artwork: artwork, size: 30)
+
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(track.title)
+                        .fontWeight(.medium)
+                        .lineLimit(1)
+                    Text(subtitle)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
             }
 
             Spacer(minLength: 8)
@@ -386,7 +504,7 @@ struct IPodTrackRow: View {
                 .monospacedDigit()
         }
         .padding(.horizontal, 12)
-        .frame(height: 44)
+        .frame(height: number != nil ? 34 : 44)
         .contentShape(Rectangle())
         .contextMenu {
             Button("Copiar título") {

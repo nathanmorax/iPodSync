@@ -354,8 +354,20 @@ struct MacLibraryPanel: View {
             case .songs:
                 IndexedSongsList(songs: visible, simulator: simulator, library: library)
             case .artists:
-                AlphabetIndexedScroll(entries: artistEntries, showsIndex: !isSearching) {
-                    ArtistsListView(songs: visible, simulator: simulator, library: library)
+                if let artist = library.openArtist, simulator.songs.contains(where: { $0.artist == artist }) {
+                    AlphabetIndexedScroll(entries: [], showsIndex: false) {
+                        ArtistDetailView(artist: artist, simulator: simulator, library: library) {
+                            withAnimation(.easeInOut(duration: 0.25)) { library.openArtist = nil }
+                        }
+                    }
+                    .transition(.move(edge: .trailing).combined(with: .opacity))
+                } else {
+                    AlphabetIndexedScroll(entries: artistEntries, showsIndex: !isSearching) {
+                        ArtistsGridView(songs: visible, simulator: simulator, query: library.query) { artist in
+                            withAnimation(.easeInOut(duration: 0.25)) { library.openArtist = artist }
+                        }
+                    }
+                    .transition(.opacity)
                 }
             case .albums:
                 AlphabetIndexedScroll(entries: albumEntries,
