@@ -45,7 +45,8 @@ struct AlbumsGridView: View {
                             Text(cover.album)
                                 .font(.system(size: 12, weight: .semibold))
                                 .lineLimit(1)
-                            Text(album.items.count == 1 ? cover.artist : "\(cover.artist) · \(album.items.count) canciones")
+                            Text(album.matchSummary.map { "\(cover.artist) · \($0)" }
+                                 ?? (album.items.count == 1 ? cover.artist : "\(cover.artist) · \(album.items.count) canciones"))
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                                 .lineLimit(1)
@@ -116,7 +117,9 @@ struct AlbumDetailView: View {
     }
 
     var body: some View {
-        let list = tracks
+        // Mientras buscas, como iTunes: solo las que coinciden (o todas, resaltadas).
+        let scoped = SearchScopedList(tracks, query: library.query, onlyMatches: library.detailShowsOnlyMatches)
+        let list = scoped.shown
 
         VStack(alignment: .leading, spacing: 14) {
             Button(action: onBack) {
@@ -127,7 +130,7 @@ struct AlbumDetailView: View {
             .help("Volver a Álbumes (⌘[)")
 
             HStack(alignment: .bottom, spacing: 16) {
-                EditableAlbumCover(songs: list, fallback: song, simulator: simulator)
+                EditableAlbumCover(songs: tracks, fallback: song, simulator: simulator)
 
                 VStack(alignment: .leading, spacing: 4) {
                     Text(song.album)
@@ -140,6 +143,11 @@ struct AlbumDetailView: View {
                 }
             }
 
+            if scoped.showsBar {
+                SearchMatchBar(query: library.query, matchCount: scoped.matches.count, total: scoped.total,
+                               onlyMatches: Bindable(library).detailShowsOnlyMatches)
+            }
+
             LibraryCard {
                 // Igual que en la página del artista: número, título y duración a la derecha.
                 ForEach(Array(list.enumerated()), id: \.element.id) { index, track in
@@ -147,7 +155,8 @@ struct AlbumDetailView: View {
                     SongRow(song: track,
                             subtitle: track.durationText ?? track.sizeText,
                             simulator: simulator, library: library, order: list.map(\.id),
-                            number: track.trackNumber ?? index + 1)
+                            number: track.trackNumber ?? index + 1,
+                            isMatch: scoped.highlights(track))
                 }
             }
         }

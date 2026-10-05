@@ -30,6 +30,20 @@ struct LibraryGroup<Item: LibraryItem>: Identifiable {
     /// Lo que se muestra y por lo que se ordena (y de donde sale la letra del índice A–Z).
     let title: String
     let items: [Item]
+    /// Cuántas coinciden con la búsqueda (igual a `items.count` si no se busca).
+    let matchCount: Int
+
+    init(id: String, title: String, items: [Item], matchCount: Int? = nil) {
+        self.id = id
+        self.title = title
+        self.items = items
+        self.matchCount = matchCount ?? items.count
+    }
+
+    /// "3 de 21 coinciden" cuando la búsqueda no abarca todo el grupo.
+    var matchSummary: String? {
+        matchCount < items.count ? "\(matchCount) de \(items.count) coinciden" : nil
+    }
 }
 
 enum LibraryIndex {
@@ -103,7 +117,8 @@ enum LibraryIndex {
         }
         return groups.map { group in
             LibraryGroup(id: group.id, title: group.title,
-                         items: byKey[group.id]?.sorted(by: order) ?? group.items)
+                         items: byKey[group.id]?.sorted(by: order) ?? group.items,
+                         matchCount: group.items.count)
         }
     }
 

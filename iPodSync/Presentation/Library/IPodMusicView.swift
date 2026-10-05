@@ -106,7 +106,7 @@ struct IPodMusicView: View {
                     Button {
                         withAnimation(.easeInOut(duration: 0.25)) { library.openIPodArtist = group.id }
                     } label: {
-                        ArtistCell(name: group.title, count: group.items.count) {
+                        ArtistCell(name: group.title, count: group.items.count, matchSummary: group.matchSummary) {
                             IPodArtworkView(track: cover, artwork: monitor.artwork, size: nil,
                                             macArtwork: monitor.macArtwork(for: cover))
                         }
@@ -124,8 +124,14 @@ struct IPodMusicView: View {
 
     /// `key`: artista normalizado (LibraryIndex.normalizedKey).
     private func artistPage(_ key: String) -> some View {
-        let tracks = monitor.tracks.filter { LibraryIndex.normalizedKey($0.artist) == key }
-        let name = LibraryIndex.mostCommon(tracks.map(\.artist)) ?? key
+        let allTracks = monitor.tracks.filter { LibraryIndex.normalizedKey($0.artist) == key }
+        let name = LibraryIndex.mostCommon(allTracks.map(\.artist)) ?? key
+        // Mientras buscas, como iTunes: solo las que coinciden (o todas, resaltadas).
+        let scoped = SearchScopedList(allTracks, query: query, onlyMatches: library.detailShowsOnlyMatches)
+        let tracks = scoped.shown
+        // Cambiar la portada siempre aplica al álbum completo, aunque se vean solo coincidencias.
+        let allByAlbum = Dictionary(grouping: allTracks, by: LibraryIndex.albumKey(for:))
+        let allAlbumCount = allByAlbum.count
         // Álbumes del artista, del más nuevo al más viejo (misma clave que la vista Álbumes).
         let albums = LibraryIndex.albums(tracks, query: "")
             .map { (key: $0.id, tracks: $0.items) }
@@ -134,17 +140,22 @@ struct IPodMusicView: View {
                 if ya != yb { return ya > yb }
                 return a.tracks[0].album.localizedCompare(b.tracks[0].album) == .orderedAscending
             }
-        let cover = tracks.first(where: \.hasArtwork) ?? tracks[0]
+        let cover = allTracks.first(where: \.hasArtwork) ?? allTracks[0]
 
         return AlphabetIndexedScroll(entries: [], showsIndex: false) {
             VStack(alignment: .leading, spacing: 14) {
-                ArtistPageHeader(name: name.isEmpty ? "Artista desconocido" : name, albumCount: albums.count, songCount: tracks.count, onBack: {
+                ArtistPageHeader(name: name.isEmpty ? "Artista desconocido" : name, albumCount: allAlbumCount, songCount: scoped.total, onBack: {
                     withAnimation(.easeInOut(duration: 0.25)) { library.openIPodArtist = nil }
                 }) {
                     IPodArtworkView(track: cover, artwork: monitor.artwork, size: 56,
                                     macArtwork: monitor.macArtwork(for: cover))
                 } accessory: {
                     EmptyView()
+                }
+
+                if scoped.showsBar {
+                    SearchMatchBar(query: query, matchCount: scoped.matches.count, total: scoped.total,
+                                   onlyMatches: Bindable(library).detailShowsOnlyMatches)
                 }
 
                 // Como Apple Music (Biblioteca › Artistas): cada álbum con su portada de encabezado
@@ -163,13 +174,14 @@ struct IPodMusicView: View {
                         }
                         .contextMenu {
                             IPodAlbumArtworkMenu(albumKey: album.key, title: first.album, artist: first.artist,
-                                                 tracks: album.tracks, monitor: monitor)
+                                                 tracks: allByAlbum[album.key] ?? album.tracks, monitor: monitor)
                         }
                         VStack(spacing: 0) {
                             ForEach(Array(songs.enumerated()), id: \.element.id) { index, track in
                                 if index > 0 { Divider().padding(.leading, 42) }
                                 IPodTrackRow(track: track, subtitle: "", artwork: monitor.artwork,
-                                             number: track.trackNumber > 0 ? track.trackNumber : index + 1)
+                                             number: track.trackNumber > 0 ? track.trackNumber : index + 1,
+                                             isMatch: scoped.highlights(track))
                             }
                         }
                     }
@@ -181,11 +193,11 @@ struct IPodMusicView: View {
 
     // MARK: Álbumes (cuadrícula de 2 o 3)
 
-    private typealias Album = (key: String, title: String, artist: String, tracks: [IPodTrack])
+    private typealias Album = (key: String, title: String, artist: String, tracks: [IPodTrack], matchSummary: String?)
 
     private var albums: [Album] {
         LibraryIndex.albums(filtered, all: monitor.tracks, query: query).map {
-            (key: $0.id, title: $0.title, artist: $0.items[0].artist, tracks: $0.items)
+            (key: $0.id, title: $0.title, artist: $0.items[0].artist, tracks: $0.items, matchSummary: $0.matchSummary)
         }
     }
 
@@ -206,7 +218,8 @@ struct IPodMusicView: View {
                             Text(album.title)
                                 .font(.system(size: columnCount >= 3 ? 11 : 12, weight: .semibold))
                                 .lineLimit(1)
-                            Text(album.tracks.count == 1 ? album.artist : "\(album.artist) · \(album.tracks.count)")
+                            Text(album.matchSummary.map { "\(album.artist) · \($0)" }
+                                 ?? (album.tracks.count == 1 ? album.artist : "\(album.artist) · \(album.tracks.count)"))
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                                 .lineLimit(1)
@@ -243,6 +256,8 @@ struct IPodMusicView: View {
     }
 
     private func albumDetail(_ album: Album) -> some View {
+        // Mientras buscas, como iTunes: solo las que coinciden (o todas, resaltadas).
+        let scoped = SearchScopedList(album.tracks, query: query, onlyMatches: library.detailShowsOnlyMatches)
         let cover = album.tracks.first(where: \.hasArtwork) ?? album.tracks[0]
         let minutes = album.tracks.map(\.durationMs).reduce(0, +) / 60_000
         let year = album.tracks.first(where: { $0.year > 0 })?.year
@@ -273,12 +288,18 @@ struct IPodMusicView: View {
                     }
                 }
 
+                if scoped.showsBar {
+                    SearchMatchBar(query: query, matchCount: scoped.matches.count, total: scoped.total,
+                                   onlyMatches: Bindable(library).detailShowsOnlyMatches)
+                }
+
                 VStack(spacing: 0) {
                     // Igual que en la página del artista: número, título y duración a la derecha.
-                    ForEach(Array(album.tracks.enumerated()), id: \.element.id) { index, track in
+                    ForEach(Array(scoped.shown.enumerated()), id: \.element.id) { index, track in
                         if index > 0 { Divider().padding(.leading, 42) }
                         IPodTrackRow(track: track, subtitle: "", artwork: monitor.artwork,
-                                     number: track.trackNumber > 0 ? track.trackNumber : index + 1)
+                                     number: track.trackNumber > 0 ? track.trackNumber : index + 1,
+                                     isMatch: scoped.highlights(track))
                     }
                 }
             }
@@ -366,6 +387,8 @@ struct IPodTrackRow: View {
     var artwork: IPodArtworkStore? = nil
     /// Número de pista: fila de álbum (sin portada, que ya va en el encabezado del álbum).
     var number: Int? = nil
+    /// Coincide con la búsqueda (se resalta cuando se ven todas las canciones).
+    var isMatch = false
 
     var body: some View {
         HStack(spacing: 10) {
@@ -376,7 +399,8 @@ struct IPodTrackRow: View {
                     .monospacedDigit()
                     .frame(width: 20, alignment: .trailing)
                 Text(track.title)
-                    .fontWeight(.medium)
+                    .fontWeight(isMatch ? .semibold : .medium)
+                    .foregroundStyle(isMatch ? AnyShapeStyle(TintShapeStyle.tint) : AnyShapeStyle(HierarchicalShapeStyle.primary))
                     .lineLimit(1)
             } else {
                 IPodArtworkView(track: track, artwork: artwork, size: 30)
@@ -408,6 +432,7 @@ struct IPodTrackRow: View {
         }
         .padding(.horizontal, 12)
         .frame(height: number != nil ? 34 : 44)
+        .background(isMatch ? Color.accentColor.opacity(0.08) : .clear)
         .contentShape(Rectangle())
         .contextMenu {
             Button("Copiar título") {

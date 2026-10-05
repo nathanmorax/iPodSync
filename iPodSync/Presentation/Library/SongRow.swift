@@ -16,6 +16,8 @@ struct SongRow: View {
     let order: [Song.ID]
     /// Número de pista: fila de álbum (sin portada, que ya va en el encabezado del álbum).
     var number: Int? = nil
+    /// Coincide con la búsqueda (se resalta cuando se ven todas las canciones).
+    var isMatch = false
 
     @AppStorage(SettingsKey.rowDensity) private var density = "regular"
 
@@ -44,7 +46,8 @@ struct SongRow: View {
                 // El título toma todo el ancho y la duración va en una columna fija a la derecha,
                 // así todos los minutos quedan alineados (antes cada uno quedaba a media fila).
                 Text(song.title)
-                    .fontWeight(.medium)
+                    .fontWeight(isMatch ? .semibold : .medium)
+                    .foregroundStyle(isMatch ? AnyShapeStyle(TintShapeStyle.tint) : AnyShapeStyle(HierarchicalShapeStyle.primary))
                     .lineLimit(1)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 Text(subtitle)
@@ -78,7 +81,8 @@ struct SongRow: View {
         .padding(.leading, indented ? 38 : 12)
         .padding(.trailing, 12)
         .frame(height: number != nil ? 34 : (compact ? 32 : 44))
-        .background(isSelected ? Color.accentColor.opacity(0.16) : .clear)
+        .background(isSelected ? Color.accentColor.opacity(0.16)
+                    : isMatch ? Color.accentColor.opacity(0.08) : .clear)
         .contentShape(Rectangle())
         // Doble clic envía; un clic selecciona (⌘ agrega, ⇧ rango).
         .onTapGesture(count: 2) { simulator.send(song.id) }

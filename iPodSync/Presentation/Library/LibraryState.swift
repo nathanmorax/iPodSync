@@ -34,7 +34,15 @@ final class LibraryState {
             clearSelection()
         }
     }
-    var query = ""
+    var query = "" {
+        didSet {
+            // Al empezar una búsqueda nueva, adentro de un artista o álbum se ven solo
+            // las coincidencias (como iTunes); con un clic se ven todas.
+            if query.isEmpty != oldValue.isEmpty { detailShowsOnlyMatches = true }
+        }
+    }
+    /// Dentro de un artista o álbum, mientras buscas: solo las canciones que coinciden.
+    var detailShowsOnlyMatches = true
     /// Filtro por estado en la Mac: Todas o Sin enviar.
     var statusFilter: LibraryStatusFilter = .all
     /// Se incrementa con ⌘F para pedir el foco del buscador del panel.

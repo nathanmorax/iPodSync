@@ -14,11 +14,14 @@ import SwiftUI
 struct ArtistCell<Artwork: View>: View {
     let name: String
     let count: Int
+    /// Al buscar: "3 de 21 coinciden" en lugar del total.
+    var matchSummary: String? = nil
     let artwork: Artwork
 
-    init(name: String, count: Int, @ViewBuilder artwork: () -> Artwork) {
+    init(name: String, count: Int, matchSummary: String? = nil, @ViewBuilder artwork: () -> Artwork) {
         self.name = name
         self.count = count
+        self.matchSummary = matchSummary
         self.artwork = artwork()
     }
 
@@ -33,9 +36,10 @@ struct ArtistCell<Artwork: View>: View {
                 .font(.system(size: 12, weight: .semibold))
                 .lineLimit(1)
                 .truncationMode(.tail)
-            Text(count == 1 ? "1 canción" : "\(count) canciones")
+            Text(matchSummary ?? (count == 1 ? "1 canción" : "\(count) canciones"))
                 .font(.caption2)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(matchSummary == nil ? AnyShapeStyle(HierarchicalShapeStyle.secondary)
+                                                     : AnyShapeStyle(TintShapeStyle.tint))
                 .monospacedDigit()
         }
         .frame(maxWidth: .infinity)
@@ -151,7 +155,7 @@ struct ArtistsGridView: View {
             ForEach(groups) { group in
                 let cover = group.items.first(where: { $0.artworkData != nil }) ?? group.items[0]
                 Button { onOpen(group.id) } label: {
-                    ArtistCell(name: group.title, count: group.items.count) {
+                    ArtistCell(name: group.title, count: group.items.count, matchSummary: group.matchSummary) {
                         SongArtworkView(song: cover, size: nil, cornerRadius: 0)
                     }
                 }
@@ -194,18 +198,25 @@ struct ArtistDetailView: View {
     }
 
     var body: some View {
-        let list = tracks
+        // Mientras buscas, como iTunes: solo las que coinciden (o todas, resaltadas).
+        let scoped = SearchScopedList(tracks, query: library.query, onlyMatches: library.detailShowsOnlyMatches)
+        let list = scoped.shown
         let groups = albums(list)
         let cover = list.first(where: { $0.artworkData != nil }) ?? list.first
         let artistMissing = list.filter { simulator.status(of: $0) != .onDevice }.count
 
         VStack(alignment: .leading, spacing: 14) {
             ArtistPageHeader(name: LibraryIndex.mostCommon(list.map(\.artist)) ?? artist,
-                             albumCount: groups.count, songCount: list.count, onBack: onBack) {
+                             albumCount: albums(tracks).count, songCount: scoped.total, onBack: onBack) {
                 if let cover { SongArtworkView(song: cover, size: 56, cornerRadius: 0) }
             } accessory: {
                 SendSongsButton(songs: list, simulator: simulator, compact: true,
                                 help: "Enviar al iPod las canciones de \(artist) que faltan")
+            }
+
+            if scoped.showsBar {
+                SearchMatchBar(query: library.query, matchCount: scoped.matches.count, total: scoped.total,
+                               onlyMatches: Bindable(library).detailShowsOnlyMatches)
             }
 
             // Como Apple Music (Biblioteca › Artistas): cada álbum con su portada de encabezado
@@ -233,7 +244,8 @@ struct ArtistDetailView: View {
                             SongRow(song: song,
                                     subtitle: song.durationText ?? song.sizeText,
                                     simulator: simulator, library: library, order: order,
-                                    number: song.trackNumber ?? index + 1)
+                                    number: song.trackNumber ?? index + 1,
+                                    isMatch: scoped.highlights(song))
                         }
                     }
                 }
