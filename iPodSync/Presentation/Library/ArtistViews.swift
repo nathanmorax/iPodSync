@@ -151,19 +151,19 @@ struct ArtistsGridView: View {
             ForEach(groups) { group in
                 let cover = group.items.first(where: { $0.artworkData != nil }) ?? group.items[0]
                 Button { onOpen(group.id) } label: {
-                    ArtistCell(name: group.id, count: group.items.count) {
+                    ArtistCell(name: group.title, count: group.items.count) {
                         SongArtworkView(song: cover, size: nil, cornerRadius: 0)
                     }
                 }
                 .buttonStyle(.plain)
-                .help(group.id)
+                .help(group.title)
                 .contextMenu {
                     let sendable = group.items.filter(simulator.canSend).map(\.id)
                     Button("Enviar \(sendable.count) al iPod") { simulator.sendAll(sendable) }
                         .disabled(sendable.isEmpty)
                 }
                 .id(group.id)   // destino del índice A–Z
-                .accessibilityLabel("\(group.id), \(group.items.count) canciones")
+                .accessibilityLabel("\(group.title), \(group.items.count) canciones")
                 .accessibilityHint("Abre el artista")
             }
         }
@@ -172,13 +172,14 @@ struct ArtistsGridView: View {
 }
 
 struct ArtistDetailView: View {
+    /// Clave normalizada del artista (LibraryIndex.normalizedKey).
     let artist: String
     let simulator: IPodSimulator
     let library: LibraryState
     let onBack: () -> Void
 
     private var tracks: [Song] {
-        simulator.songs.filter { $0.artist == artist }.sorted(by: Song.albumOrder)
+        simulator.songs.filter { LibraryIndex.normalizedKey($0.artist) == artist }.sorted(by: Song.albumOrder)
     }
 
     /// Álbumes del artista, del más nuevo al más viejo.
@@ -199,7 +200,8 @@ struct ArtistDetailView: View {
         let artistMissing = list.filter { simulator.status(of: $0) != .onDevice }.count
 
         VStack(alignment: .leading, spacing: 14) {
-            ArtistPageHeader(name: artist, albumCount: groups.count, songCount: list.count, onBack: onBack) {
+            ArtistPageHeader(name: LibraryIndex.mostCommon(list.map(\.artist)) ?? artist,
+                             albumCount: groups.count, songCount: list.count, onBack: onBack) {
                 if let cover { SongArtworkView(song: cover, size: 56, cornerRadius: 0) }
             } accessory: {
                 SendSongsButton(songs: list, simulator: simulator, compact: true,

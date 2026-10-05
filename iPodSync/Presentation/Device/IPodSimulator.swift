@@ -122,10 +122,10 @@ final class IPodSimulator {
         deviceTracks = tracks
     }
 
+    /// La misma canción en la Mac y en el iPod aunque cambien mayúsculas, acentos o espacios
+    /// (antes solo se recortaban los extremos y "Espejos " no coincidía con "Espejos").
     static func matchKey(title: String, artist: String) -> String {
-        "\(title)|\(artist)"
-            .folding(options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive], locale: nil)
-            .trimmingCharacters(in: .whitespaces)
+        "\(LibraryIndex.normalizedKey(title))|\(LibraryIndex.normalizedKey(artist))"
     }
 
     /// Títulos para el menú Canciones del LCD.

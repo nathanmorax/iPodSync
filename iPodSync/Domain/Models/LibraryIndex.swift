@@ -37,7 +37,7 @@ enum LibraryIndex {
     // MARK: Mac
 
     static func artists(_ songs: [Song], query: String) -> [LibraryGroup<Song>] {
-        groups(songs, query: query, key: \.artist, title: { $0.artist }, order: Song.albumOrder)
+        groups(songs, query: query, key: { normalizedKey($0.artist) }, title: { $0.artist }, order: Song.albumOrder)
     }
 
     static func albums(_ songs: [Song], query: String) -> [LibraryGroup<Song>] {
@@ -47,16 +47,87 @@ enum LibraryIndex {
     // MARK: iPod
 
     static func artists(_ tracks: [IPodTrack], query: String) -> [LibraryGroup<IPodTrack>] {
-        groups(tracks, query: query, key: \.artist,
+        groups(tracks, query: query, key: { normalizedKey($0.artist) },
                title: { $0.artist.isEmpty ? "Artista desconocido" : $0.artist },
                order: trackOrder)
     }
 
-    /// Clave "artista|álbum" (la misma que usa `LibraryState.openIPodAlbum`).
+    /// Clave "artista|álbum" normalizada (la misma que usa `LibraryState.openIPodAlbum`).
     static func albums(_ tracks: [IPodTrack], query: String) -> [LibraryGroup<IPodTrack>] {
-        groups(tracks, query: query, key: { "\($0.artist)|\($0.album)" },
+        groups(tracks, query: query, key: albumKey(for:),
                title: { $0.album.isEmpty ? "Sin álbum" : $0.album },
                order: trackOrder)
+    }
+
+    static func albumKey(for track: IPodTrack) -> String {
+        "\(normalizedKey(track.artist))|\(normalizedKey(track.album))"
+    }
+
+    // MARK: Con búsqueda o filtro: cada grupo trae TODAS sus canciones
+
+    /// La búsqueda (o "Sin enviar") decide QUÉ artistas o álbumes aparecen y en qué orden,
+    /// pero cada uno trae todas sus canciones. Antes un artista mostraba "1 canción" (la que
+    /// coincidía) y al abrirlo tenía 20; y cambiar la portada de un álbum buscado solo
+    /// cambiaba las canciones que coincidían.
+    static func artists(_ visible: [Song], all: [Song], query: String) -> [LibraryGroup<Song>] {
+        expanding(artists(visible, query: query), visibleCount: visible.count, all: all,
+                  key: { normalizedKey($0.artist) }, order: Song.albumOrder)
+    }
+
+    static func albums(_ visible: [Song], all: [Song], query: String) -> [LibraryGroup<Song>] {
+        expanding(albums(visible, query: query), visibleCount: visible.count, all: all,
+                  key: \.albumKey, order: Song.albumOrder)
+    }
+
+    static func artists(_ visible: [IPodTrack], all: [IPodTrack], query: String) -> [LibraryGroup<IPodTrack>] {
+        expanding(artists(visible, query: query), visibleCount: visible.count, all: all,
+                  key: { normalizedKey($0.artist) }, order: trackOrder)
+    }
+
+    static func albums(_ visible: [IPodTrack], all: [IPodTrack], query: String) -> [LibraryGroup<IPodTrack>] {
+        expanding(albums(visible, query: query), visibleCount: visible.count, all: all,
+                  key: albumKey(for:), order: trackOrder)
+    }
+
+    private static func expanding<Item: LibraryItem>(_ groups: [LibraryGroup<Item>],
+                                                     visibleCount: Int,
+                                                     all: [Item],
+                                                     key: (Item) -> String,
+                                                     order: (Item, Item) -> Bool) -> [LibraryGroup<Item>] {
+        guard visibleCount != all.count else { return groups }   // sin filtro: ya están completos
+        let wanted = Set(groups.map(\.id))
+        var byKey: [String: [Item]] = [:]
+        for item in all {
+            let k = key(item)
+            if wanted.contains(k) { byKey[k, default: []].append(item) }
+        }
+        return groups.map { group in
+            LibraryGroup(id: group.id, title: group.title,
+                         items: byKey[group.id]?.sorted(by: order) ?? group.items)
+        }
+    }
+
+    // MARK: Mismo nombre, escrito distinto
+
+    /// Junta el mismo artista o álbum aunque venga escrito distinto en las etiquetas:
+    /// "Kings Of Leon", "kings of leon ", "Kings  of Leon" → "kings of leon".
+    /// Antes se agrupaba por el texto exacto y un artista se partía en varios
+    /// (uno con 1 canción, otro con el resto).
+    static func normalizedKey(_ text: String) -> String {
+        text.folding(options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive], locale: nil)
+            .split(whereSeparator: \.isWhitespace)
+            .joined(separator: " ")
+    }
+
+    /// La forma de escribirlo que más se repite (para mostrar "Kings of Leon" y no la clave).
+    static func mostCommon(_ names: [String]) -> String? {
+        var counts: [String: Int] = [:]
+        for name in names { counts[name, default: 0] += 1 }
+        var best: (name: String, count: Int)?
+        for name in names where counts[name, default: 0] > (best?.count ?? 0) {
+            best = (name, counts[name, default: 0])
+        }
+        return best?.name
     }
 
     static func trackOrder(_ a: IPodTrack, _ b: IPodTrack) -> Bool {
@@ -81,7 +152,8 @@ enum LibraryIndex {
         }
         let groups = keys.map { k -> LibraryGroup<Item> in
             let list = buckets[k, default: []].sorted(by: order)
-            return LibraryGroup(id: k, title: title(list[0]), items: list)
+            // Si el nombre viene escrito de varias formas, se muestra la más común.
+            return LibraryGroup(id: k, title: mostCommon(list.map(title)) ?? title(list[0]), items: list)
         }
 
         guard SearchMatch.isSearching(query) else {

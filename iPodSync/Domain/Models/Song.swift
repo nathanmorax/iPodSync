@@ -68,8 +68,9 @@ nonisolated struct Song: Identifiable, Hashable, Codable, Sendable {
 
 extension Song {
     /// Identifica el álbum: mismo nombre de álbum y mismo artista.
+    /// Mismo álbum aunque las etiquetas varíen en mayúsculas, acentos o espacios.
     var albumKey: String {
-        "\(artist)|\(album)".folding(options: [.caseInsensitive, .diacriticInsensitive], locale: nil)
+        "\(LibraryIndex.normalizedKey(artist))|\(LibraryIndex.normalizedKey(album))"
     }
 
     /// Orden dentro de un álbum: número de pista y luego título.

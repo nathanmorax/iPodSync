@@ -79,8 +79,9 @@ struct IPodMusicView: View {
                     .transition(.opacity)
             }
         } else if scope == .artists {
-            if let name = library.openIPodArtist, monitor.tracks.contains(where: { $0.artist == name }) {
-                artistPage(name)
+            if let key = library.openIPodArtist,
+               monitor.tracks.contains(where: { LibraryIndex.normalizedKey($0.artist) == key }) {
+                artistPage(key)
                     .transition(.move(edge: .trailing).combined(with: .opacity))
             } else {
                 artistsGrid
@@ -93,30 +94,27 @@ struct IPodMusicView: View {
 
     // MARK: Artistas (círculos de 3 y página del artista)
 
-    /// Agrupado y ordenado por LibraryIndex (el rango de búsqueda se calcula una vez por grupo).
-    private var artistGroups: [(artist: String, tracks: [IPodTrack])] {
-        LibraryIndex.artists(filtered, query: query).map { (artist: $0.title, tracks: $0.items) }
-    }
-
+    /// Agrupado y ordenado por LibraryIndex: el mismo artista escrito distinto
+    /// ("Kings Of Leon" / "Kings of Leon") queda en un solo grupo.
     private var artistsGrid: some View {
-        let groups = artistGroups
+        let groups = LibraryIndex.artists(filtered, all: monitor.tracks, query: query)
         let columns = Array(repeating: GridItem(.flexible(), spacing: 8, alignment: .top), count: 3)
-        return AlphabetIndexedScroll(entries: groups.map { (id: $0.artist, title: $0.artist) }, showsIndex: !isSearching) {
+        return AlphabetIndexedScroll(entries: LibraryIndex.indexEntries(groups), showsIndex: !isSearching) {
             LazyVGrid(columns: columns, alignment: .center, spacing: 16) {
-                ForEach(groups, id: \.artist) { group in
-                    let cover = group.tracks.first(where: \.hasArtwork) ?? group.tracks[0]
+                ForEach(groups) { group in
+                    let cover = group.items.first(where: \.hasArtwork) ?? group.items[0]
                     Button {
-                        withAnimation(.easeInOut(duration: 0.25)) { library.openIPodArtist = cover.artist }
+                        withAnimation(.easeInOut(duration: 0.25)) { library.openIPodArtist = group.id }
                     } label: {
-                        ArtistCell(name: group.artist, count: group.tracks.count) {
+                        ArtistCell(name: group.title, count: group.items.count) {
                             IPodArtworkView(track: cover, artwork: monitor.artwork, size: nil,
                                             macArtwork: monitor.macArtwork(for: cover))
                         }
                     }
                     .buttonStyle(.plain)
-                    .help(group.artist)
-                    .id(group.artist)   // destino del índice A–Z
-                    .accessibilityLabel("\(group.artist), \(group.tracks.count) canciones")
+                    .help(group.title)
+                    .id(group.id)   // destino del índice A–Z
+                    .accessibilityLabel("\(group.title), \(group.items.count) canciones")
                     .accessibilityHint("Abre el artista")
                 }
             }
@@ -124,13 +122,13 @@ struct IPodMusicView: View {
         }
     }
 
-    private func artistPage(_ name: String) -> some View {
-        let tracks = monitor.tracks
-            .filter { $0.artist == name }
-            .sorted { ($0.album, $0.trackNumber, $0.title) < ($1.album, $1.trackNumber, $1.title) }
+    /// `key`: artista normalizado (LibraryIndex.normalizedKey).
+    private func artistPage(_ key: String) -> some View {
+        let tracks = monitor.tracks.filter { LibraryIndex.normalizedKey($0.artist) == key }
+        let name = LibraryIndex.mostCommon(tracks.map(\.artist)) ?? key
         // Álbumes del artista, del más nuevo al más viejo (misma clave que la vista Álbumes).
-        let albums = Dictionary(grouping: tracks) { "\($0.artist)|\($0.album)" }
-            .map { (key: $0.key, tracks: $0.value) }
+        let albums = LibraryIndex.albums(tracks, query: "")
+            .map { (key: $0.id, tracks: $0.items) }
             .sorted { a, b in
                 let ya = a.tracks[0].year, yb = b.tracks[0].year
                 if ya != yb { return ya > yb }
@@ -186,7 +184,7 @@ struct IPodMusicView: View {
     private typealias Album = (key: String, title: String, artist: String, tracks: [IPodTrack])
 
     private var albums: [Album] {
-        LibraryIndex.albums(filtered, query: query).map {
+        LibraryIndex.albums(filtered, all: monitor.tracks, query: query).map {
             (key: $0.id, title: $0.title, artist: $0.items[0].artist, tracks: $0.items)
         }
     }
