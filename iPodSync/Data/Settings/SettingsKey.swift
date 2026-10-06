@@ -20,4 +20,5 @@ nonisolated enum SettingsKey {
     static let libraryScope = "libraryScope"           // Canciones / Artistas / Álbumes
     static let lastIPodBackups = "lastIPodBackups"     // [id del iPod: fecha del último respaldo]
     static let iPodVolumeBookmarks = "iPodVolumeBookmarks" // acceso guardado a cada iPod
+    static let backupFolders = "backupFolders"         // [id del iPod: acceso a su carpeta de respaldo]
 }

@@ -30,7 +30,11 @@ nonisolated enum ITunesDBReader {
 
     /// Lee todas las canciones. Se puede llamar fuera del hilo principal.
     static func readTracks(volume: URL) throws -> [IPodTrack] {
-        let url = volume.appendingPathComponent("iPod_Control/iTunes/iTunesDB")
+        try readTracks(databaseURL: volume.appendingPathComponent("iPod_Control/iTunes/iTunesDB"))
+    }
+
+    /// Lee las canciones de un archivo iTunesDB suelto (p. ej. el de un día guardado en el respaldo).
+    static func readTracks(databaseURL url: URL) throws -> [IPodTrack] {
         guard FileManager.default.fileExists(atPath: url.path) else { throw ReadError.notFound }
 
         let db: Data
