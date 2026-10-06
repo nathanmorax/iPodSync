@@ -383,3 +383,247 @@ nonisolated enum IPodTrackWriter {
         for i in 0..<8 { b[o + i] = UInt8((v >> (8 * UInt64(i))) & 0xFF) }
     }
 }
+
+// MARK: - Eliminar canciones
+
+nonisolated extension IPodTrackWriter {
+    struct RemovedTracks: Sendable {
+        let count: Int
+        /// Bytes de los archivos que se borraron del iPod.
+        let freedBytes: Int64
+        /// Archivos que no se pudieron borrar (la canción ya no está en la base; solo ocupan espacio).
+        let leftoverFiles: Int
+    }
+
+    enum RemoveError: LocalizedError {
+        case notFound
+
+        var errorDescription: String? {
+            "Esas canciones ya no están en el iPod. Vuelve a leer la música del iPod."
+        }
+    }
+
+    /// Quita canciones del iPod:
+    ///  1. Las quita de la base (lista de canciones y todas las listas), guardando la base anterior.
+    ///  2. Vuelve a leer la base y confirma: si algo no cuadra, regresa la anterior y no borra nada.
+    ///  3. Ajusta los archivos del iPod que cuentan canciones por posición (Play Counts, On‑The‑Go).
+    ///  4. Borra los archivos de música, uno por uno (`progress(posición, título)`).
+    static func remove(trackIDs: Set<UInt32>, volume: URL,
+                       progress: (_ position: Int, _ title: String) -> Void) throws -> RemovedTracks {
+        let fm = FileManager.default
+        let control = volume.appendingPathComponent("iPod_Control")
+        let dbURL = control.appendingPathComponent("iTunes/iTunesDB")
+        guard fm.fileExists(atPath: dbURL.path) else { throw WriteError.noDatabase }
+
+        // Lista en el orden de la base: la posición importa para Play Counts y On‑The‑Go.
+        let before = try ITunesDBReader.readTracks(volume: volume)
+        let removedIndices = Set(before.indices.filter { trackIDs.contains(before[$0].id) })
+        let targets = removedIndices.sorted().map { before[$0] }
+        guard !targets.isEmpty else { throw RemoveError.notFound }
+
+        // 1. Base nueva sin esas canciones.
+        let original = try Data(contentsOf: dbURL)
+        let updated = try removing(trackIDs: trackIDs, from: original)
+        let previous = control.appendingPathComponent("iTunes/iTunesDB.ipodsync-anterior")
+        let temp = control.appendingPathComponent("iTunes/iTunesDB.ipodsync-nuevo")
+        do {
+            try? fm.removeItem(at: previous)
+            try original.write(to: previous)
+            try updated.write(to: temp)
+            try fm.removeItem(at: dbURL)
+            try fm.moveItem(at: temp, to: dbURL)
+        } catch {
+            try? fm.removeItem(at: temp)
+            if !fm.fileExists(atPath: dbURL.path) { try? original.write(to: dbURL) }
+            throw error
+        }
+
+        // 2. Confirmar: ninguna de las quitadas sigue ahí y las demás están todas.
+        let after = (try? ITunesDBReader.readTracks(volume: volume)) ?? []
+        let afterIDs = Set(after.map(\.id))
+        guard after.count == before.count - targets.count, afterIDs.isDisjoint(with: trackIDs) else {
+            try? fm.removeItem(at: dbURL)
+            try? original.write(to: dbURL)
+            throw WriteError.verifyFailed
+        }
+
+        // 3. Archivos que guardan datos por posición de canción (si no se ajustan, las
+        //    reproducciones o la lista On‑The‑Go quedarían en canciones equivocadas).
+        let iTunes = control.appendingPathComponent("iTunes")
+        fixPositions(in: iTunes.appendingPathComponent("Play Counts"), magic: "mhdp",
+                     trackCount: before.count, removed: removedIndices, entriesAreIndices: false)
+        let otg = ((try? fm.contentsOfDirectory(atPath: iTunes.path)) ?? []).filter { $0.hasPrefix("OTGPlaylistInfo") }
+        for name in otg {
+            fixPositions(in: iTunes.appendingPathComponent(name), magic: "mhpo",
+                         trackCount: before.count, removed: removedIndices, entriesAreIndices: true)
+        }
+
+        // 4. Borrar la música. Si un archivo no se puede borrar, la canción ya no está en el iPod
+        //    (solo queda ocupando espacio); no vale la pena deshacer todo por eso.
+        var freed: Int64 = 0
+        var leftovers = 0
+        for (index, track) in targets.enumerated() {
+            progress(index + 1, track.title)
+            guard let file = fileURL(for: track.location, volume: volume) else { continue }
+            let size = (try? file.resourceValues(forKeys: [.fileSizeKey]))?.fileSize.map(Int64.init) ?? track.sizeBytes
+            do {
+                try fm.removeItem(at: file)
+                freed += size
+            } catch {
+                if fm.fileExists(atPath: file.path) { leftovers += 1 }
+            }
+        }
+        return RemovedTracks(count: targets.count, freedBytes: freed, leftoverFiles: leftovers)
+    }
+
+    /// ":iPod_Control:Music:F03:ABCD.mp3" → archivo en el disco del iPod.
+    /// Solo dentro de iPod_Control/Music (nunca se borra otra cosa).
+    static func fileURL(for location: String, volume: URL) -> URL? {
+        let parts = location.split(separator: ":").map(String.init)
+        guard parts.count >= 3, parts[0] == "iPod_Control", parts[1] == "Music",
+              !parts.contains(".."), !parts.contains(".") else { return nil }
+        return parts.reduce(volume) { $0.appendingPathComponent($1) }
+    }
+
+    /// Devuelve la base sin esas canciones (o lanza un error sin tocar nada).
+    static func removing(trackIDs: Set<UInt32>, from data: Data) throws -> Data {
+        let db = [UInt8](data)
+        guard tag(db, 0) == "mhbd" else { throw WriteError.unsupportedDatabase("sin mhbd") }
+        let headerLength = Int(u32(db, 4))
+
+        var output = Array(db[0..<headerLength])
+        var offset = headerLength
+        var sawTracks = false
+        while offset + 16 <= db.count, tag(db, offset) == "mhsd" {
+            let length = Int(u32(db, offset + 8))
+            guard length > 0, offset + length <= db.count else { throw WriteError.unsupportedDatabase("mhsd dañado") }
+            var bytes = Array(db[offset..<(offset + length)])
+            switch u32(db, offset + 12) {
+            case 1:
+                bytes = try removeTracks(trackIDs, from: bytes)
+                sawTracks = true
+            case 2, 3:
+                // Todas las listas (la maestra, las tuyas y la de podcasts) pierden esas canciones.
+                bytes = try removeItems(trackIDs, from: bytes)
+            default:
+                break
+            }
+            output += bytes
+            offset += length
+        }
+        guard sawTracks else { throw WriteError.unsupportedDatabase("sin lista de canciones") }
+        if offset < db.count { output += db[offset...] }
+        put32(&output, 8, UInt32(output.count))
+        return Data(output)
+    }
+
+    private static func removeTracks(_ ids: Set<UInt32>, from section: [UInt8]) throws -> [UInt8] {
+        let list = Int(u32(section, 4))
+        guard tag(section, list) == "mhlt" else { throw WriteError.unsupportedDatabase("sin mhlt") }
+        let count = Int(u32(section, list + 8))
+        var offset = list + Int(u32(section, list + 4))
+        var kept = Array(section[0..<offset])
+        var removed = 0
+        for _ in 0..<count {
+            guard tag(section, offset) == "mhit" else { throw WriteError.unsupportedDatabase("mhit dañado") }
+            let total = Int(u32(section, offset + 8))
+            guard total > 0, offset + total <= section.count else { throw WriteError.unsupportedDatabase("mhit dañado") }
+            if ids.contains(u32(section, offset + 0x10)) {
+                removed += 1
+            } else {
+                kept += section[offset..<(offset + total)]
+            }
+            offset += total
+        }
+        if offset < section.count { kept += section[offset...] }
+        put32(&kept, list + 8, UInt32(count - removed))
+        put32(&kept, 8, UInt32(kept.count))
+        return kept
+    }
+
+    private static func removeItems(_ ids: Set<UInt32>, from section: [UInt8]) throws -> [UInt8] {
+        let list = Int(u32(section, 4))
+        guard tag(section, list) == "mhlp" else { throw WriteError.unsupportedDatabase("sin mhlp") }
+        let playlists = Int(u32(section, list + 8))
+        var offset = list + Int(u32(section, list + 4))
+        var output = Array(section[0..<offset])
+        for _ in 0..<playlists {
+            guard tag(section, offset) == "mhyp" else { throw WriteError.unsupportedDatabase("mhyp dañado") }
+            let total = Int(u32(section, offset + 8))
+            guard total > 0, offset + total <= section.count else { throw WriteError.unsupportedDatabase("mhyp dañado") }
+            output += try removeItems(ids, fromPlaylist: Array(section[offset..<(offset + total)]))
+            offset += total
+        }
+        if offset < section.count { output += section[offset...] }
+        put32(&output, 8, UInt32(output.count))
+        return output
+    }
+
+    /// Una lista (mhyp): encabezado, sus mhod y luego un mhip por canción.
+    private static func removeItems(_ ids: Set<UInt32>, fromPlaylist playlist: [UInt8]) throws -> [UInt8] {
+        let header = Int(u32(playlist, 4))
+        let objects = Int(u32(playlist, 12))
+        let items = Int(u32(playlist, 16))
+        var offset = header
+        var output = Array(playlist[0..<header])
+        for _ in 0..<objects {
+            guard tag(playlist, offset) == "mhod" else { throw WriteError.unsupportedDatabase("mhod de lista dañado") }
+            let length = Int(u32(playlist, offset + 8))
+            guard length > 0, offset + length <= playlist.count else { throw WriteError.unsupportedDatabase("mhod de lista dañado") }
+            output += playlist[offset..<(offset + length)]
+            offset += length
+        }
+        var kept: UInt32 = 0
+        for _ in 0..<items {
+            guard tag(playlist, offset) == "mhip" else { throw WriteError.unsupportedDatabase("mhip dañado") }
+            let length = Int(u32(playlist, offset + 8))
+            guard length > 0, offset + length <= playlist.count else { throw WriteError.unsupportedDatabase("mhip dañado") }
+            if !ids.contains(u32(playlist, offset + 24)) {
+                output += playlist[offset..<(offset + length)]
+                kept += 1
+            }
+            offset += length
+        }
+        if offset < playlist.count { output += playlist[offset...] }
+        put32(&output, 8, UInt32(output.count))
+        put32(&output, 16, kept)
+        return output
+    }
+
+    /// Play Counts (una entrada por canción, en orden) y On‑The‑Go (lista de posiciones):
+    /// quita lo de las canciones borradas y recorre las posiciones. Si el archivo no cuadra
+    /// con la base, no se toca.
+    private static func fixPositions(in url: URL, magic: String, trackCount: Int,
+                                     removed: Set<Int>, entriesAreIndices: Bool) {
+        guard let data = try? Data(contentsOf: url) else { return }
+        var bytes = [UInt8](data)
+        guard tag(bytes, 0) == magic else { return }
+        let header = Int(u32(bytes, 4))
+        let entryLength = Int(u32(bytes, 8))
+        let count = Int(u32(bytes, 12))
+        guard header >= 16, entryLength > 0, header + count * entryLength <= bytes.count else { return }
+
+        var output = Array(bytes[0..<header])
+        var kept = 0
+        let sortedRemoved = removed.sorted()
+        for index in 0..<count {
+            let start = header + index * entryLength
+            var entry = Array(bytes[start..<(start + entryLength)])
+            if entriesAreIndices {
+                let position = Int(u32(entry, 0))
+                if removed.contains(position) { continue }
+                let shift = sortedRemoved.prefix { $0 < position }.count
+                put32(&entry, 0, UInt32(position - shift))
+            } else {
+                guard count == trackCount else { return }   // no cuadra: mejor no tocarlo
+                if removed.contains(index) { continue }
+            }
+            output += entry
+            kept += 1
+        }
+        put32(&output, 12, UInt32(kept))
+        bytes = output
+        try? Data(bytes).write(to: url, options: .atomic)
+    }
+}
+

@@ -78,6 +78,30 @@ struct MacLibraryPanel: View {
                 .strokeBorder(.white.opacity(0.12), lineWidth: 0.5)
         )
         .shadow(color: .black.opacity(0.3), radius: 24, y: 14)
+        // Aviso chico al terminar de eliminar ("Se eliminaron 3 canciones · 11,8 MB liberados").
+        .overlay(alignment: .bottom) {
+            if let notice = monitor.notice {
+                HStack(spacing: 7) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
+                    Text(notice)
+                }
+                .font(.system(size: 12, weight: .medium))
+                .padding(.horizontal, 14)
+                .padding(.vertical, 9)
+                .background(.regularMaterial, in: Capsule())
+                .overlay(Capsule().strokeBorder(.white.opacity(0.12), lineWidth: 0.5))
+                .shadow(color: .black.opacity(0.25), radius: 10, y: 4)
+                .padding(.bottom, 18)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+                .task(id: notice) {
+                    AccessibilityNotification.Announcement(notice).post()
+                    try? await Task.sleep(for: .seconds(3.5))
+                    withAnimation(.easeOut(duration: 0.25)) { monitor.notice = nil }
+                }
+            }
+        }
+        .animation(.snappy(duration: 0.3), value: monitor.notice)
         .overlay {
             if isFileDropTarget {
                 RoundedRectangle(cornerRadius: 14)

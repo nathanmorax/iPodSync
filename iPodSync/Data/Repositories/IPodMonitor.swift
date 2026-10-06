@@ -315,6 +315,99 @@ final class IPodMonitor {
         }
     }
 
+    // MARK: - Eliminar canciones del iPod
+
+    /// Canciones que se están borrando (sus filas se ven tenues mientras tanto).
+    private(set) var deletingTrackIDs: Set<UInt32> = []
+    /// Aviso chico al terminar ("Se eliminaron 3 canciones · 11,8 MB liberados").
+    var notice: String?
+
+    /// Pregunta y, si dices que sí, borra esas canciones del iPod.
+    /// Devuelve true si se empezó a borrar (para limpiar la selección).
+    @discardableResult
+    func confirmAndDelete(_ tracks: [IPodTrack]) -> Bool {
+        let tracks = tracks.filter { !deletingTrackIDs.contains($0.id) }
+        guard !tracks.isEmpty else { return false }
+        let keys = simulator?.macKeys ?? []
+        let missing = tracks.filter { !(simulator?.hasOnMac($0, keys: keys) ?? false) }.count
+        guard DeleteConfirmation.ask(titles: tracks.map(\.title),
+                                     bytes: tracks.map(\.sizeBytes).reduce(0, +),
+                                     missingOnMac: missing) else { return false }
+        return delete(tracks)
+    }
+
+    private func delete(_ tracks: [IPodTrack]) -> Bool {
+        guard let volume = accessibleVolumeURL, let device else {
+            alertMessage = WriteToIPodError.noAccess.localizedDescription
+            return false
+        }
+        guard hasBackup(for: device.id) else {
+            alertMessage = "Antes de eliminar música, haz un respaldo del iPod (menú iPod › Respaldar la música del iPod…)."
+            return false
+        }
+        if let model = IPodInfoReader.read(volume: volume).modelName,
+           model.localizedCaseInsensitiveContains("classic") {
+            alertMessage = WriteToIPodError.classicNotSupported.localizedDescription
+            return false
+        }
+
+        let ids = Set(tracks.map(\.id))
+        let total = tracks.count
+        let simulator = self.simulator
+        withAnimation(.easeOut(duration: 0.25)) { deletingTrackIDs.formUnion(ids) }
+        withAnimation(.easeOut(duration: 0.2)) {
+            simulator?.deletion = DeletionState(title: tracks[0].title, position: 1, total: total)
+        }
+
+        Task {
+            let result: Result<IPodTrackWriter.RemovedTracks, Error> = await Task.detached(priority: .userInitiated) {
+                do {
+                    // Espera su turno si se están enviando canciones o poniendo portadas.
+                    return .success(try await IPodWriteLock.shared.run {
+                        try IPodTrackWriter.remove(trackIDs: ids, volume: volume) { position, title in
+                            Task { @MainActor in
+                                simulator?.deletion = DeletionState(title: title, position: position, total: total)
+                            }
+                        }
+                    })
+                } catch {
+                    return .failure(error)
+                }
+            }.value
+
+            // Un momento con la barra llena antes de quitar la pantalla.
+            try? await Task.sleep(for: .seconds(0.4))
+            withAnimation(.easeOut(duration: 0.2)) { simulator?.deletion = nil }
+
+            switch result {
+            case .success(let removed):
+                // Ya se confirmó en la base: se quitan de la lista sin volver a leer todo el iPod
+                // (así no se pierde dónde estabas).
+                withAnimation(.easeOut(duration: 0.3)) {
+                    self.tracks.removeAll { ids.contains($0.id) }
+                    deletingTrackIDs.subtract(ids)
+                }
+                simulator?.setDeviceTracks(self.tracks)
+                simulator?.forgetDeviceTracks(tracks)
+                rescan()   // espacio libre actualizado
+
+                var text = removed.count == 1 ? "Se eliminó 1 canción" : "Se eliminaron \(removed.count) canciones"
+                if removed.freedBytes > 0 {
+                    text += " · \(ByteCountFormatter.string(fromByteCount: removed.freedBytes, countStyle: .file)) liberados"
+                }
+                notice = text
+                if removed.leftoverFiles > 0 {
+                    alertMessage = "Las canciones ya no están en el iPod, pero \(removed.leftoverFiles) archivo(s) no se pudieron borrar y siguen ocupando espacio."
+                }
+            case .failure(let error):
+                withAnimation { deletingTrackIDs.subtract(ids) }
+                alertMessage = "No se eliminó nada.\n\n\(error.localizedDescription)"
+                reloadTracks()
+            }
+        }
+        return true
+    }
+
     // MARK: - Música del iPod
 
     /// Vuelve a leer la base de datos del iPod (menú iPod › Volver a leer la música).

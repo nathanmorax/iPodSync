@@ -60,12 +60,16 @@ struct LCDScreen: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Pantalla del iPod")
-        .accessibilityValue(simulator.transfer.map { "Enviando \($0.title)" } ?? simulator.statusTitle)
+        .accessibilityValue(simulator.deletion.map { "Eliminando \($0.title)" }
+                            ?? simulator.transfer.map { "Enviando \($0.title)" } ?? simulator.statusTitle)
     }
 
     @ViewBuilder
     private var content: some View {
-        if let transfer = simulator.transfer {
+        if let deletion = simulator.deletion {
+            LCDDeletionView(state: deletion)
+                .transition(.opacity)
+        } else if let transfer = simulator.transfer {
             LCDTransferView(state: transfer, progress: simulator.transferProgress, simulator: simulator)
                 .transition(.opacity)
         } else if simulator.current.screen == .storage {
@@ -293,6 +297,42 @@ private struct LCDFallingNotes: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
         .allowsHitTesting(false)
+    }
+}
+
+/// "Eliminando 2 de 3", la canción, la misma barra delgada y "No desconectar".
+struct LCDDeletionView: View {
+    let state: DeletionState
+
+    var body: some View {
+        VStack(spacing: 7) {
+            Text("ELIMINANDO \(state.position) DE \(state.total)")
+                .font(.lcd(6.5, weight: .bold))
+                .tracking(1)
+            Text(state.title.uppercased())
+                .font(.lcd(9))
+                .tracking(1.2)
+                .lineLimit(1)
+                .contentTransition(.opacity)
+            Rectangle()
+                .strokeBorder(Theme.lcdInk, lineWidth: 1)
+                .frame(height: 7)
+                .overlay(alignment: .leading) {
+                    GeometryReader { geo in
+                        Rectangle()
+                            .fill(Theme.lcdInk)
+                            .frame(width: geo.size.width * Double(state.position) / Double(max(state.total, 1)))
+                    }
+                }
+                .animation(.easeOut(duration: 0.2), value: state.position)
+            Text("NO DESCONECTAR")
+                .font(.lcd(6.5))
+                .tracking(1)
+                .opacity(0.7)
+        }
+        .padding(.horizontal, 16)
+        .foregroundStyle(Theme.lcdInk)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 

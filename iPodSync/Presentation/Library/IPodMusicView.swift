@@ -92,6 +92,29 @@ struct IPodMusicView: View {
         }
     }
 
+    // MARK: Selección y eliminar
+
+    /// Fila con selección (clic, ⌘‑clic, ⇧‑clic) y clic derecho › Eliminar del iPod…
+    private func row(_ track: IPodTrack, subtitle: String, number: Int? = nil,
+                     isMatch: Bool = false, order: [UInt32]) -> some View {
+        let selected = library.iPodSelection.contains(track.id)
+        let several = selected && library.iPodSelection.count > 1
+        return IPodTrackRow(track: track, subtitle: subtitle, artwork: monitor.artwork,
+                            number: number, isMatch: isMatch, isSelected: selected,
+                            isDeleting: monitor.deletingTrackIDs.contains(track.id),
+                            deleteTitle: several ? "Eliminar \(library.iPodSelection.count) canciones del iPod…" : "Eliminar del iPod…",
+                            onDelete: { deleteTracks(several ? selectedTracks : [track]) })
+            .onTapGesture { library.clickIPod(track.id, in: order) }
+    }
+
+    private var selectedTracks: [IPodTrack] {
+        monitor.tracks.filter { library.iPodSelection.contains($0.id) }
+    }
+
+    private func deleteTracks(_ tracks: [IPodTrack]) {
+        if monitor.confirmAndDelete(tracks) { library.clearIPodSelection() }
+    }
+
     // MARK: Artistas (círculos de 3 y página del artista)
 
     /// Agrupado y ordenado por LibraryIndex: el mismo artista escrito distinto
@@ -113,6 +136,11 @@ struct IPodMusicView: View {
                     }
                     .buttonStyle(.plain)
                     .help(group.title)
+                    .contextMenu {
+                        Button("Eliminar artista del iPod…", systemImage: "trash", role: .destructive) {
+                            deleteTracks(group.items)
+                        }
+                    }
                     .id(group.id)   // destino del índice A–Z
                     .accessibilityLabel("\(group.title), \(group.items.count) canciones")
                     .accessibilityHint("Abre el artista")
@@ -141,6 +169,10 @@ struct IPodMusicView: View {
                 return a.tracks[0].album.localizedCompare(b.tracks[0].album) == .orderedAscending
             }
         let cover = allTracks.first(where: \.hasArtwork) ?? allTracks[0]
+        // Orden en pantalla (para ⇧‑clic): álbum por álbum, por número de pista.
+        let order = albums.flatMap { album in
+            album.tracks.sorted { ($0.trackNumber, $0.title) < ($1.trackNumber, $1.title) }.map(\.id)
+        }
 
         return AlphabetIndexedScroll(entries: [], showsIndex: false) {
             VStack(alignment: .leading, spacing: 14) {
@@ -175,13 +207,17 @@ struct IPodMusicView: View {
                         .contextMenu {
                             IPodAlbumArtworkMenu(albumKey: album.key, title: first.album, artist: first.artist,
                                                  tracks: allByAlbum[album.key] ?? album.tracks, monitor: monitor)
+                            Divider()
+                            Button("Eliminar álbum del iPod…", systemImage: "trash", role: .destructive) {
+                                deleteTracks(allByAlbum[album.key] ?? album.tracks)
+                            }
                         }
                         VStack(spacing: 0) {
                             ForEach(Array(songs.enumerated()), id: \.element.id) { index, track in
                                 if index > 0 { Divider().padding(.leading, 42) }
-                                IPodTrackRow(track: track, subtitle: "", artwork: monitor.artwork,
-                                             number: track.trackNumber > 0 ? track.trackNumber : index + 1,
-                                             isMatch: scoped.highlights(track))
+                                row(track, subtitle: "",
+                                    number: track.trackNumber > 0 ? track.trackNumber : index + 1,
+                                    isMatch: scoped.highlights(track), order: order)
                             }
                         }
                     }
@@ -234,6 +270,10 @@ struct IPodMusicView: View {
                             .disabled(monitor.updatingArtworkAlbums.contains(album.key))
                         IPodAlbumArtworkMenu(albumKey: album.key, title: album.title, artist: album.artist,
                                              tracks: album.tracks, monitor: monitor)
+                        Divider()
+                        Button("Eliminar álbum del iPod…", systemImage: "trash", role: .destructive) {
+                            deleteTracks(album.tracks)
+                        }
                     }
                     .artworkChooserPopover(for: album.key, presented: $choosingArtworkFor,
                                            artist: album.artist, album: album.title) { data in
@@ -295,11 +335,12 @@ struct IPodMusicView: View {
 
                 VStack(spacing: 0) {
                     // Igual que en la página del artista: número, título y duración a la derecha.
+                    let order = scoped.shown.map(\.id)
                     ForEach(Array(scoped.shown.enumerated()), id: \.element.id) { index, track in
                         if index > 0 { Divider().padding(.leading, 42) }
-                        IPodTrackRow(track: track, subtitle: "", artwork: monitor.artwork,
-                                     number: track.trackNumber > 0 ? track.trackNumber : index + 1,
-                                     isMatch: scoped.highlights(track))
+                        row(track, subtitle: "",
+                            number: track.trackNumber > 0 ? track.trackNumber : index + 1,
+                            isMatch: scoped.highlights(track), order: order)
                     }
                 }
             }
@@ -334,6 +375,7 @@ struct IPodMusicView: View {
 
     private var list: some View {
         let groups = sections
+        let order = groups.flatMap(\.tracks).map(\.id)
         return ScrollViewReader { proxy in
             HStack(alignment: .top, spacing: 4) {
                 ScrollView {
@@ -341,7 +383,7 @@ struct IPodMusicView: View {
                         ForEach(groups, id: \.key) { group in
                             Section {
                                 ForEach(group.tracks) { track in
-                                    IPodTrackRow(track: track, subtitle: subtitle(for: track), artwork: monitor.artwork)
+                                    row(track, subtitle: subtitle(for: track), order: order)
                                     Divider().padding(.leading, 52)
                                 }
                             } header: {
@@ -389,6 +431,12 @@ struct IPodTrackRow: View {
     var number: Int? = nil
     /// Coincide con la búsqueda (se resalta cuando se ven todas las canciones).
     var isMatch = false
+    var isSelected = false
+    /// Se está borrando del iPod: se ve tenue y tachada.
+    var isDeleting = false
+    /// Clic derecho › Eliminar…: texto del botón y qué hacer (nil = sin esa opción).
+    var deleteTitle: String? = nil
+    var onDelete: (() -> Void)? = nil
 
     var body: some View {
         HStack(spacing: 10) {
@@ -401,6 +449,7 @@ struct IPodTrackRow: View {
                 Text(track.title)
                     .fontWeight(isMatch ? .semibold : .medium)
                     .foregroundStyle(isMatch ? AnyShapeStyle(TintShapeStyle.tint) : AnyShapeStyle(HierarchicalShapeStyle.primary))
+                    .strikethrough(isDeleting)
                     .lineLimit(1)
             } else {
                 IPodArtworkView(track: track, artwork: artwork, size: 30)
@@ -408,6 +457,7 @@ struct IPodTrackRow: View {
                 VStack(alignment: .leading, spacing: 1) {
                     Text(track.title)
                         .fontWeight(.medium)
+                        .strikethrough(isDeleting)
                         .lineLimit(1)
                     Text(subtitle)
                         .font(.caption)
@@ -432,16 +482,27 @@ struct IPodTrackRow: View {
         }
         .padding(.horizontal, 12)
         .frame(height: number != nil ? 34 : 44)
-        .background(isMatch ? Color.accentColor.opacity(0.08) : .clear)
+        .background(isSelected ? Color.accentColor.opacity(0.16)
+                    : isMatch ? Color.accentColor.opacity(0.08) : .clear)
+        .opacity(isDeleting ? 0.3 : 1)
         .contentShape(Rectangle())
         .contextMenu {
             Button("Copiar título") {
                 NSPasteboard.general.clearContents()
                 NSPasteboard.general.setString("\(track.title) — \(track.artist)", forType: .string)
             }
+            if let deleteTitle, let onDelete {
+                Divider()
+                Button(deleteTitle, systemImage: "trash", role: .destructive, action: onDelete)
+            }
         }
+        .allowsHitTesting(!isDeleting)
         .accessibilityElement(children: .combine)
         .accessibilityLabel([track.title, subtitle, track.durationText].filter { !$0.isEmpty }.joined(separator: ", "))
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+        .accessibilityActions {
+            if let deleteTitle, let onDelete { Button(deleteTitle, action: onDelete) }
+        }
     }
 }
 

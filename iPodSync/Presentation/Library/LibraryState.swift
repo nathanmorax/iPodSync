@@ -89,4 +89,29 @@ final class LibraryState {
         selection.removeAll()
         anchor = nil
     }
+
+    // MARK: Selección en "En mi iPod" (iPod real: las canciones tienen ID del iPod)
+
+    var iPodSelection: Set<UInt32> = []
+    @ObservationIgnored private var iPodAnchor: UInt32?
+
+    /// Igual que `click`: clic = una, ⌘‑clic = agregar/quitar, ⇧‑clic = rango.
+    func clickIPod(_ id: UInt32, in order: [UInt32]) {
+        let flags = NSEvent.modifierFlags
+        if flags.contains(.command) {
+            if iPodSelection.contains(id) { iPodSelection.remove(id) } else { iPodSelection.insert(id) }
+            iPodAnchor = id
+        } else if flags.contains(.shift), let iPodAnchor,
+                  let a = order.firstIndex(of: iPodAnchor), let b = order.firstIndex(of: id) {
+            iPodSelection.formUnion(order[min(a, b)...max(a, b)])
+        } else {
+            iPodSelection = [id]
+            iPodAnchor = id
+        }
+    }
+
+    func clearIPodSelection() {
+        iPodSelection.removeAll()
+        iPodAnchor = nil
+    }
 }

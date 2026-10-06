@@ -28,3 +28,10 @@ final class TransferProgress {
         self.value = value
     }
 }
+
+/// Canciones que se están borrando del iPod (la pantalla del iPod dice "Eliminando 2 de 3").
+struct DeletionState: Equatable {
+    var title: String
+    var position: Int
+    var total: Int
+}

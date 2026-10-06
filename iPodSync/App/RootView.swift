@@ -29,7 +29,9 @@ struct RootView: View {
                 guard isImporting else { return }
                 chooseAudioFiles()
             }
-            .iPodKeyboardNavigation(simulator)
+            .iPodKeyboardNavigation(simulator) {
+                IPodDeletion.deleteSelection(library: library, simulator: simulator, monitor: monitor)
+            }
             .onChange(of: simulator.pendingCount, initial: true) { _, pending in
                 // Insignia en el Dock con las canciones pendientes.
                 NSApp.dockTile.badgeLabel = pending > 0 ? "\(pending)" : nil

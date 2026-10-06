@@ -129,6 +129,15 @@ struct SongContextMenu: View {
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString("\(song.title) — \(song.artist)", forType: .string)
         }
+        if let library, library.source == .iPod, simulator.isSimulated, song.isOnDevice {
+            Divider()
+            let several = library.selection.count > 1 && library.selection.contains(song.id)
+            Button(several ? "Eliminar \(library.selection.count) canciones del iPod…" : "Eliminar del iPod…",
+                   systemImage: "trash", role: .destructive) {
+                let songs = several ? simulator.onDeviceSongs.filter { library.selection.contains($0.id) } : [song]
+                IPodDeletion.deleteSimulated(songs, simulator: simulator, library: library)
+            }
+        }
         if song.fileURL != nil || song.bookmark != nil {
             Divider()
             if let library, library.selection.count > 1, library.selection.contains(song.id) {

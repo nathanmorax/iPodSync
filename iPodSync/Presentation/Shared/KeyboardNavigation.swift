@@ -10,6 +10,9 @@ import AppKit
 
 struct KeyboardNavigation: ViewModifier {
     let simulator: IPodSimulator
+    /// Tecla Delete: primero se ofrece aquí (borrar lo seleccionado en "En mi iPod").
+    /// Si devuelve false, Delete sigue siendo "atrás" en el iPod.
+    var onDelete: (() -> Bool)? = nil
     @State private var monitor: Any?
 
     func body(content: Content) -> some View {
@@ -38,6 +41,8 @@ struct KeyboardNavigation: ViewModifier {
         if window.firstResponder is NSText { return false }
         guard event.modifierFlags.intersection([.command, .option, .control]).isEmpty else { return false }
 
+        if event.keyCode == 51 || event.keyCode == 117, onDelete?() == true { return true }   // ⌫ / ⌦
+
         switch event.keyCode {
         case 126:             simulator.moveUp()            // ↑
         case 125:             simulator.moveDown()          // ↓
@@ -50,7 +55,7 @@ struct KeyboardNavigation: ViewModifier {
 }
 
 extension View {
-    func iPodKeyboardNavigation(_ simulator: IPodSimulator) -> some View {
-        modifier(KeyboardNavigation(simulator: simulator))
+    func iPodKeyboardNavigation(_ simulator: IPodSimulator, onDelete: (() -> Bool)? = nil) -> some View {
+        modifier(KeyboardNavigation(simulator: simulator, onDelete: onDelete))
     }
 }

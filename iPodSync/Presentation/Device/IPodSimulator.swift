@@ -59,6 +59,8 @@ final class IPodSimulator {
     private(set) var recentIDs: [Song.ID]
     private(set) var nav: [NavEntry] = [NavEntry(screen: .main)]
     private(set) var transfer: TransferState?
+    /// Borrando canciones del iPod (nil si no). Lo pone IPodMonitor; lo muestra el LCD.
+    var deletion: DeletionState?
     /// Progreso de la canción en curso. Es `let`: leer `simulator.transferProgress` no suscribe
     /// a la vista; solo quien lea `.value` (la barra del LCD) se redibuja con cada avance.
     let transferProgress = TransferProgress()
@@ -97,9 +99,9 @@ final class IPodSimulator {
 
     var current: NavEntry { nav[nav.count - 1] }
     var isTransferring: Bool { transfer != nil }
-    var canNavigate: Bool { isConnected && transfer == nil }
+    var canNavigate: Bool { isConnected && transfer == nil && deletion == nil }
 
-    var statusTitle: String { transfer != nil ? "SYNC" : current.screen.title }
+    var statusTitle: String { transfer != nil || deletion != nil ? "SYNC" : current.screen.title }
 
     /// Canciones esperando o enviándose ahora.
     var pendingCount: Int {
@@ -350,6 +352,36 @@ final class IPodSimulator {
             problems.append(duplicates == 1 ? "1 canción ya estaba en la biblioteca." : "\(duplicates) canciones ya estaban en la biblioteca.")
         }
         if !problems.isEmpty { importMessage = problems.joined(separator: "\n") }
+    }
+
+    /// Después de borrar del iPod real: esas canciones de la Mac vuelven a estar "sin enviar"
+    /// (si se enviaron en esta sesión, `sentIDs` las seguía contando como enviadas).
+    func forgetDeviceTracks(_ tracks: [IPodTrack]) {
+        let keys = Set(tracks.map { Self.matchKey(title: $0.title, artist: $0.artist) })
+        for song in songs where keys.contains(Self.matchKey(title: song.title, artist: song.artist)) {
+            sentIDs.remove(song.id)
+        }
+    }
+
+    /// ¿Esta canción del iPod también está en la biblioteca de la Mac?
+    func hasOnMac(_ track: IPodTrack, keys: Set<String>? = nil) -> Bool {
+        let key = Self.matchKey(title: track.title, artist: track.artist)
+        if let keys { return keys.contains(key) }
+        return songs.contains { Self.matchKey(title: $0.title, artist: $0.artist) == key }
+    }
+
+    /// Claves (título|artista) de toda la biblioteca de la Mac, para revisar muchas de una vez.
+    var macKeys: Set<String> {
+        Set(songs.map { Self.matchKey(title: $0.title, artist: $0.artist) })
+    }
+
+    /// iPod de prueba: "borrar" solo quita la marca de que está en el iPod.
+    func removeFromSimulatedIPod(_ ids: Set<Song.ID>) {
+        guard isSimulated else { return }
+        for index in songs.indices where ids.contains(songs[index].id) {
+            songs[index].isOnDevice = false
+        }
+        recentIDs.removeAll { ids.contains($0) }
     }
 
     /// Quita canciones de la biblioteca (el archivo sigue en la Mac).
