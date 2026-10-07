@@ -239,7 +239,7 @@ struct IPodMusicView: View {
 
     private var albumsGrid: some View {
         let columns = Array(repeating: GridItem(.flexible(), spacing: 12, alignment: .top),
-                            count: max(2, min(3, columnCount)))
+                            count: max(2, min(4, columnCount)))
         let all = albums
         return AlphabetIndexedScroll(entries: all.map { (id: $0.key, title: $0.title) }, showsIndex: !isSearching) {
             LazyVGrid(columns: columns, alignment: .leading, spacing: 16) {

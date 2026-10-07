@@ -34,6 +34,8 @@ struct LCDScreen: View {
                     content
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                 }
+            } else {
+                disconnected
             }
         }
         .animation(.easeInOut(duration: 0.25), value: simulator.backlightOn)
@@ -62,6 +64,24 @@ struct LCDScreen: View {
         .accessibilityLabel("Pantalla del iPod")
         .accessibilityValue(simulator.deletion.map { "Eliminando \($0.title)" }
                             ?? simulator.transfer.map { "Enviando \($0.title)" } ?? simulator.statusTitle)
+    }
+
+    /// Pantalla apagada: dice qué hacer (antes había un aviso aparte en el panel).
+    private var disconnected: some View {
+        VStack(spacing: 6) {
+            Image(systemName: simulator.isSimulated ? "powerplug" : "cable.connector")
+                .font(.system(size: 24, weight: .light))
+                .opacity(0.7)
+            Text(simulator.isSimulated ? "DESCONECTADO" : "CONECTA TU IPOD")
+                .font(.lcd(9, weight: .bold))
+                .tracking(1)
+            Text(simulator.isSimulated ? "IPOD DE PRUEBA" : "CON EL CABLE USB")
+                .font(.lcd(6.5))
+                .tracking(0.8)
+                .opacity(0.6)
+        }
+        .foregroundStyle(Theme.lcdInk.opacity(0.8))
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     @ViewBuilder

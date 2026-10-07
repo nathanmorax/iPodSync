@@ -31,7 +31,7 @@ struct AlbumsGridView: View {
     @State private var choosingArtworkFor: String?
 
     private var columns: [GridItem] {
-        Array(repeating: GridItem(.flexible(), spacing: 12, alignment: .top), count: max(2, min(3, columnCount)))
+        Array(repeating: GridItem(.flexible(), spacing: 12, alignment: .top), count: max(2, min(4, columnCount)))
     }
 
     var body: some View {
