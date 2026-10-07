@@ -11,8 +11,10 @@ import SwiftUI
 import AppKit
 
 final class EmulatorWindow: NSWindow {
-    /// Mismo tamaño que RootView (.frame(width: 800, height: 760)).
-    static let contentSize = NSSize(width: 800, height: 760)
+    /// Una sola ventana de vidrio (diseño AT1). RootView usa este mismo tamaño.
+    static let contentSize = NSSize(width: 1000, height: 640)
+    /// Mismo radio que el vidrio de EmulatorView.
+    static let cornerRadius: CGFloat = 24
 
     init<Content: View>(rootView: Content) {
         let hosting = NSHostingView(rootView: rootView)
@@ -28,10 +30,17 @@ final class EmulatorWindow: NSWindow {
 
         contentView = hosting
         hosting.frame = NSRect(origin: .zero, size: size)
+        // Recortar las esquinas de la ventana igual que el vidrio (radio 24). Sin esto, macOS
+        // calcula la sombra con el rectángulo completo y se ve un marco cuadrado alrededor.
+        hosting.wantsLayer = true
+        hosting.layer?.cornerRadius = Self.cornerRadius
+        hosting.layer?.cornerCurve = .continuous
+        hosting.layer?.masksToBounds = true
         setContentSize(size)
         isOpaque = false
         backgroundColor = .clear
-        hasShadow = false              // cada panel tiene su propia sombra
+        // Sombra de macOS: sigue la forma redondeada del vidrio (la parte transparente no la tiene).
+        hasShadow = true
         isReleasedWhenClosed = false
         isRestorable = false
         isMovable = true
@@ -39,6 +48,13 @@ final class EmulatorWindow: NSWindow {
         title = "iPodSync"
         collectionBehavior.insert(.fullScreenNone)
         center()
+        // La sombra se calcula con lo que ya está dibujado: recalcularla cuando SwiftUI pinte.
+        DispatchQueue.main.async { [weak self] in self?.invalidateShadow() }
+    }
+
+    override func becomeKey() {
+        super.becomeKey()
+        invalidateShadow()
     }
 
     override var canBecomeKey: Bool { true }

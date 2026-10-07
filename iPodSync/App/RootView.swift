@@ -20,7 +20,7 @@ struct RootView: View {
 
     var body: some View {
         EmulatorView(simulator: simulator, library: library, monitor: monitor)
-            .frame(width: 800, height: 760)
+            .frame(width: EmulatorWindow.contentSize.width, height: EmulatorWindow.contentSize.height)
             .navigationTitle("iPodSync")
             // La ventana transparente y sin marco la pone EmulatorWindow (AppKit).
             // Ventana de "Abrir" suelta, no como hoja: con la ventana transparente,
@@ -87,7 +87,7 @@ struct RootView: View {
 #Preview("RootView · ventana completa") {
     RootView(simulator: IPodSimulator(), library: LibraryState(), monitor: IPodMonitor())
         .environment(BackupViewModel())
-        .frame(width: 800, height: 760)
+        .frame(width: EmulatorWindow.contentSize.width, height: EmulatorWindow.contentSize.height)
         .background(Wallpaper())
 }
 

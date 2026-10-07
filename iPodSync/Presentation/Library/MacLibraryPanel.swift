@@ -2,7 +2,9 @@
 //  MacLibraryPanel.swift
 //  iPodSync
 //
-//  Panel flotante: "En mi Mac" / "En mi iPod", búsqueda, filtros, lista y espacio antes de enviar.
+//  La biblioteca dentro de la ventana de vidrio (diseño AT1): pestañas y filtros en una fila,
+//  la lista y el espacio antes de enviar. El selector Mac | iPod va debajo del iPod y el buscador
+//  en la barra de arriba (LibraryChrome.swift).
 //
 
 import SwiftUI
@@ -14,9 +16,7 @@ struct MacLibraryPanel: View {
     let monitor: IPodMonitor
 
     @Environment(BackupViewModel.self) private var backup
-    @FocusState private var searchFocused: Bool
     @State private var isFileDropTarget = false
-    @Namespace private var sourceNamespace
 
     // MARK: Datos
 
@@ -37,10 +37,6 @@ struct MacLibraryPanel: View {
     /// Lo que se ve: el pool con la búsqueda aplicada.
     private var visible: [Song] { library.filter(pool) }
 
-    private var iPodCount: Int {
-        simulator.isSimulated ? simulator.onDeviceSongs.count : monitor.tracks.count
-    }
-
     private var pending: [Song] {
         simulator.songs.filter { simulator.status(of: $0) == .notOnDevice }
     }
@@ -56,28 +52,21 @@ struct MacLibraryPanel: View {
     // MARK: Vista
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            sourcePicker
+        VStack(alignment: .leading, spacing: 12) {
             if needsAccess { accessBanner }
-            if !simulator.isSimulated && monitor.device == nil { connectHint }
-            searchField
-            scopeTabs
-            if isMac {
-                filterChips
-            } else if simulator.isConnected {
+            // Pestañas a la izquierda y filtros a la derecha, en una sola fila.
+            HStack(spacing: 12) {
+                scopeTabs
+                Spacer(minLength: 8)
+                if isMac { filterChips }
+            }
+            if !isMac && simulator.isConnected {
                 storageBar
             }
             content
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             if isMac { footer }
         }
-        .padding(16)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .strokeBorder(.white.opacity(0.12), lineWidth: 0.5)
-        )
-        .shadow(color: .black.opacity(0.3), radius: 24, y: 14)
         // Aviso chico al terminar de eliminar ("Se eliminaron 3 canciones · 11,8 MB liberados").
         .overlay(alignment: .bottom) {
             if let notice = monitor.notice {
@@ -120,64 +109,14 @@ struct MacLibraryPanel: View {
             return true
         } isTargeted: { isFileDropTarget = $0 }
         .environment(\.colorScheme, .dark)
-        .onChange(of: library.searchFocusRequest) { searchFocused = true }
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Biblioteca de la Mac")
-    }
-
-    // MARK: Encabezado: En mi Mac | En mi iPod
-
-    private var sourcePicker: some View {
-        HStack(spacing: 2) {
-            ForEach(LibrarySource.allCases) { source in
-                sourceButton(source, count: source == .mac ? simulator.songs.count : iPodCount)
-            }
-        }
-        .padding(2)
-        .background(.black.opacity(0.3), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
-        // El encabezado del panel también mueve la ventana.
-        .background(WindowDragArea())
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("Ver música")
-    }
-
-    private func sourceButton(_ source: LibrarySource, count: Int) -> some View {
-        let isOn = library.source == source
-        return Button {
-            withAnimation(.snappy(duration: 0.2)) { library.source = source }
-        } label: {
-            HStack(spacing: 7) {
-                Image(systemName: source.systemImage)
-                    .font(.system(size: 14))
-                Text(source.title)
-                    .font(.system(size: 13, weight: isOn ? .semibold : .regular))
-                Text("\(count)")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-                    .monospacedDigit()
-                    .contentTransition(.numericText())
-            }
-            .foregroundStyle(isOn ? Color.primary : Color.secondary)
-            .frame(maxWidth: .infinity)
-            .frame(height: 28)
-            .background {
-                if isOn {
-                    RoundedRectangle(cornerRadius: 7, style: .continuous)
-                        .fill(.white.opacity(0.16))
-                        .matchedGeometryEffect(id: "source", in: sourceNamespace)
-                }
-            }
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("\(source.title), \(count) canciones")
-        .accessibilityAddTraits(isOn ? .isSelected : [])
     }
 
     /// Canciones / Artistas / Álbumes como pestañas oscuras; en Álbumes, 2 o 3 por fila al final.
     private var scopeTabs: some View {
         HStack(spacing: 8) {
-            DarkSegmented(selection: $library.scope, options: LibraryScope.allCases, title: "Ver por") { scope, isOn in
+            DarkSegmented(selection: $library.scope, options: LibraryScope.allCases, fillsWidth: false, title: "Ver por") { scope, isOn in
                 HStack(spacing: 5) {
                     Image(systemName: scope.systemImage)
                         .font(.system(size: 12))
@@ -226,57 +165,6 @@ struct MacLibraryPanel: View {
         .accessibilityElement(children: .contain)
     }
 
-    private var connectHint: some View {
-        HStack(alignment: .top, spacing: 10) {
-            Image(systemName: "cable.connector")
-                .font(.system(size: 16))
-                .foregroundStyle(.secondary)
-                .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Conecta tu iPod con el cable USB")
-                    .font(.system(size: 12, weight: .semibold))
-                Text("Se detecta solo. Si no aparece, elígelo a mano.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Button("Elegir iPod…") { monitor.requestAccess() }
-                    .controlSize(.small)
-            }
-        }
-        .padding(10)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.quaternary, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-    }
-
-    private var searchField: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "magnifyingglass")
-                .foregroundStyle(.secondary)
-                .accessibilityHidden(true)
-            TextField("Buscar", text: $library.query)
-                .textFieldStyle(.plain)
-                .focused($searchFocused)
-                .onExitCommand {
-                    library.query = ""
-                    searchFocused = false
-                }
-            if !library.query.isEmpty {
-                Button {
-                    library.query = ""
-                } label: {
-                    Label("Borrar búsqueda", systemImage: "xmark.circle.fill")
-                        .labelStyle(.iconOnly)
-                }
-                .buttonStyle(.borderless)
-                .foregroundStyle(.secondary)
-            }
-        }
-        .padding(.horizontal, 8)
-        .frame(minWidth: 120, maxWidth: .infinity)
-        .frame(height: 28)
-        .background(.quaternary, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
-        .help("Buscar (⌘F)")
-    }
-
     private var filterChips: some View {
         HStack(spacing: 6) {
             ForEach(LibraryStatusFilter.allCases) { filter in
@@ -296,7 +184,6 @@ struct MacLibraryPanel: View {
                 .buttonStyle(.plain)
                 .accessibilityAddTraits(isOn ? .isSelected : [])
             }
-            Spacer(minLength: 4)
             if simulator.importingCount > 0 {
                 HStack(spacing: 5) {
                     ProgressView().controlSize(.mini)
@@ -549,12 +436,12 @@ struct AlbumColumnsPicker: View {
     @AppStorage(SettingsKey.albumColumns) private var columnCount = 2
 
     var body: some View {
-        DarkSegmented(selection: $columnCount, options: [2, 3], fillsWidth: false, title: "Álbumes por fila") { count, _ in
-            Image(systemName: count == 2 ? "square.grid.2x2" : "square.grid.3x3")
+        DarkSegmented(selection: $columnCount, options: [2, 3, 4], fillsWidth: false, title: "Álbumes por fila") { count, _ in
+            Image(systemName: count == 2 ? "square.grid.2x2" : count == 3 ? "square.grid.3x3" : "square.grid.4x3.fill")
                 .font(.system(size: 12))
                 .accessibilityLabel("\(count) por fila")
         }
         .fixedSize()
-        .help("Álbumes por fila: 2 o 3")
+        .help("Álbumes por fila: 2, 3 o 4")
     }
 }
