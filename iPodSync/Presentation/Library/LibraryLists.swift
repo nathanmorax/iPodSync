@@ -34,22 +34,72 @@ struct AlbumsGridView: View {
         Array(repeating: GridItem(.flexible(), spacing: 12, alignment: .top), count: max(2, min(3, columnCount)))
     }
 
+    private var isList: Bool { columnCount == 1 }
+
     var body: some View {
-        LazyVGrid(columns: columns, alignment: .leading, spacing: 18) {
-            ForEach(albums) { album in
-                let cover = album.items[0]
-                Button { onOpen(cover) } label: {
-                    VStack(alignment: .leading, spacing: 6) {
-                        AlbumArtwork(song: cover)
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text(cover.album)
-                                .font(.system(size: 12, weight: .semibold))
-                                .lineLimit(1)
-                            Text(album.matchSummary.map { "\(cover.artist) · \($0)" }
-                                 ?? (album.items.count == 1 ? cover.artist : "\(cover.artist) · \(album.items.count) canciones"))
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
+        if isList {
+            // Lista: portada chica, nombre y artista, y cuántas ya están en el iPod.
+            LazyVStack(alignment: .leading, spacing: 2) {
+                ForEach(albums) { album in cell(album) }
+            }
+        } else {
+            LazyVGrid(columns: columns, alignment: .leading, spacing: 18) {
+                ForEach(albums) { album in cell(album) }
+            }
+        }
+    }
+
+    private func subtitle(_ album: LibraryGroup<Song>) -> String {
+        let cover = album.items[0]
+        return album.matchSummary.map { "\(cover.artist) · \($0)" }
+            ?? (album.items.count == 1 ? cover.artist : "\(cover.artist) · \(album.items.count) canciones")
+    }
+
+    /// "Sin enviar", "En el iPod" o "3 de 10 en el iPod" (solo en la lista).
+    private func status(_ album: LibraryGroup<Song>) -> String {
+        let onDevice = album.items.filter(simulator.isOnIPod).count
+        if onDevice == 0 { return "Sin enviar" }
+        if onDevice == album.items.count { return "En el iPod" }
+        return "\(onDevice) de \(album.items.count) en el iPod"
+    }
+
+    private func cell(_ album: LibraryGroup<Song>) -> some View {
+        let cover = album.items[0]
+        return Button { onOpen(cover) } label: {
+                    Group {
+                        if isList {
+                            HStack(spacing: 10) {
+                                SongArtworkView(song: cover, size: 40, cornerRadius: 5)
+                                VStack(alignment: .leading, spacing: 1) {
+                                    Text(cover.album)
+                                        .font(.system(size: 12.5, weight: .semibold))
+                                        .lineLimit(1)
+                                    Text(subtitle(album))
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(1)
+                                }
+                                Spacer(minLength: 8)
+                                Text(status(album))
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                            }
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 5)
+                        } else {
+                            VStack(alignment: .leading, spacing: 6) {
+                                AlbumArtwork(song: cover)
+                                VStack(alignment: .leading, spacing: 1) {
+                                    Text(cover.album)
+                                        .font(.system(size: 12, weight: .semibold))
+                                        .lineLimit(1)
+                                    Text(subtitle(album))
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(1)
+                                }
+                            }
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -74,8 +124,6 @@ struct AlbumsGridView: View {
                 .accessibilityLabel("\(cover.album), \(cover.artist), \(album.items.count) canciones")
                 .accessibilityHint("Abre el álbum")
                 .id(album.id)   // destino del índice A–Z
-            }
-        }
     }
 
 }

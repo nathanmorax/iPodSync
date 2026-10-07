@@ -59,7 +59,6 @@ struct MacLibraryPanel: View {
         VStack(alignment: .leading, spacing: 10) {
             sourcePicker
             if needsAccess { accessBanner }
-            if !simulator.isSimulated && monitor.device == nil { connectHint }
             searchField
             scopeTabs
             if isMac {
@@ -72,9 +71,10 @@ struct MacLibraryPanel: View {
             if isMac { footer }
         }
         .padding(16)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        // Vidrio como las cápsulas del iPod (con un tinte oscuro para que el texto se lea en cualquier fondo).
+        .glassEffect(.regular.tint(.black.opacity(0.28)), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
                 .strokeBorder(.white.opacity(0.12), lineWidth: 0.5)
         )
         .shadow(color: .black.opacity(0.3), radius: 24, y: 14)
@@ -224,27 +224,6 @@ struct MacLibraryPanel: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.accentColor.opacity(0.15), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
         .accessibilityElement(children: .contain)
-    }
-
-    private var connectHint: some View {
-        HStack(alignment: .top, spacing: 10) {
-            Image(systemName: "cable.connector")
-                .font(.system(size: 16))
-                .foregroundStyle(.secondary)
-                .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Conecta tu iPod con el cable USB")
-                    .font(.system(size: 12, weight: .semibold))
-                Text("Se detecta solo. Si no aparece, elígelo a mano.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Button("Elegir iPod…") { monitor.requestAccess() }
-                    .controlSize(.small)
-            }
-        }
-        .padding(10)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.quaternary, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 
     private var searchField: some View {
@@ -549,12 +528,13 @@ struct AlbumColumnsPicker: View {
     @AppStorage(SettingsKey.albumColumns) private var columnCount = 2
 
     var body: some View {
-        DarkSegmented(selection: $columnCount, options: [2, 3], fillsWidth: false, title: "Álbumes por fila") { count, _ in
-            Image(systemName: count == 2 ? "square.grid.2x2" : "square.grid.3x3")
+        // 1 = lista (portada, nombre y estado); 2 o 3 = cuadrícula.
+        DarkSegmented(selection: $columnCount, options: [1, 2, 3], fillsWidth: false, title: "Ver álbumes") { count, _ in
+            Image(systemName: count == 1 ? "list.bullet" : count == 2 ? "square.grid.2x2" : "square.grid.3x3")
                 .font(.system(size: 12))
-                .accessibilityLabel("\(count) por fila")
+                .accessibilityLabel(count == 1 ? "Lista" : "\(count) por fila")
         }
         .fixedSize()
-        .help("Álbumes por fila: 2 o 3")
+        .help("Álbumes en lista, o 2 o 3 por fila")
     }
 }
